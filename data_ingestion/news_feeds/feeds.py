@@ -64,35 +64,59 @@ class SimNewsFeed(NewsFeed):
 
 
 class RSSNewsFeed(NewsFeed):
+    """Real news via feedparser. Polls the configured RSS/Atom feeds periodically
+    (every ``poll_every_n_ticks`` ticks) and emits each unseen entry as a NEWS event,
+    which the NLP layer then scores for relevance + sentiment.
+
+    No API key required — these are public feeds. Network failures degrade gracefully
+    (logged, skipped) so a dead feed never stalls the pipeline.
+    """
+
+    _DEFAULT_FEEDS = [
+        "https://www.forexlive.com/feed",
+        "https://www.investing.com/rss/news_25.rss",
+        "https://cointelegraph.com/rss",
+        "https://www.fxstreet.com/rss/news",
+    ]
+
     def start(self) -> None:
         super().start()
+        self._feeds = self.cfg.get("data.news.rss_feeds", []) or self._DEFAULT_FEEDS
+        self._seen: set = set()
+        self._counter = 0
+        self._poll_every = int(self.cfg.get("data.news.rss.poll_every_n_ticks", 200))
         try:
-            import feedparser
+            import feedparser  # noqa: F401
+            self._poll()  # initial pull so news is available immediately
+            self.bus.subscribe(EventType.TICK, self._on_tick)
+            log.info("RSS feed watching %d sources (re-poll every %d ticks)",
+                     len(self._feeds), self._poll_every)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("RSS feed unavailable (feedparser missing?): %s", exc)
 
-            feeds = self.cfg.get("data.news.rss_feeds", []) or [
-                "https://www.forexlive.com/feed",
-                "https://www.investing.com/rss/news_25.rss",
-            ]
-            self._feeds = feeds
-            self._seen = set()
+    def _on_tick(self, ev: NormalizedEvent) -> None:
+        self._counter += 1
+        if self._counter % self._poll_every == 0:
             self._poll()
-            log.info("RSS feed watching %d sources", len(feeds))
-        except Exception as exc:
-            log.warning("RSS feed unavailable: %s", exc)
 
     def _poll(self) -> None:
         import feedparser
 
         for url in self._feeds:
-            parsed = feedparser.parse(url)
+            try:
+                parsed = feedparser.parse(url)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("RSS poll failed for %s: %s", url, exc)
+                continue
             for entry in parsed.entries:
                 key = entry.get("id") or entry.get("link")
-                if key in self._seen:
+                if not key or key in self._seen:
                     continue
                 self._seen.add(key)
                 self.emit(normalize_news("rss", title=entry.get("title", ""),
                                          summary=entry.get("summary", ""), url=entry.get("link", ""),
                                          time=time.time()))
+                self.metrics.inc("news_ingested")
 
 
 class ForexFactoryFeed(NewsFeed):

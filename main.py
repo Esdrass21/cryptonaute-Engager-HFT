@@ -71,21 +71,24 @@ def _load_cfg(path: str | None) -> Config:
 def cmd_run(args) -> int:
     cfg = _load_cfg(args.config)
     cfg.set("mode", "live" if args.live else "paper")
+    # generic source overrides (apply in both paper and live)
+    if args.market:
+        cfg.set("data.market.source", args.market)
+    if args.news:
+        cfg.set("data.news.source", args.news)
+    if args.exchange:
+        cfg.set("execution.exchange", args.exchange)
     if args.live:
         if args.broker == "crypto":
-            cfg.set("data.market.source", "crypto")
+            cfg.set("data.market.source", args.market or "crypto")
             cfg.set("execution.broker", "crypto")
-            if args.exchange:
-                cfg.set("execution.exchange", args.exchange)
         else:
-            cfg.set("data.market.source", "mt5")
+            cfg.set("data.market.source", args.market or "mt5")
             cfg.set("execution.broker", "mt5")
     elif args.broker == "crypto":
-        # paper-equivalent on crypto feed (no live keys needed for sim)
-        cfg.set("data.market.source", "crypto")
+        # paper-equivalent on crypto feed (no live keys needed for public data)
+        cfg.set("data.market.source", args.market or "crypto")
         cfg.set("execution.broker", "crypto")
-        if args.exchange:
-            cfg.set("execution.exchange", args.exchange)
     orch = Orchestrator(cfg)
     orch.run(steps=args.steps)
     return 0
@@ -184,6 +187,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Live/paper broker backend (--live defaults to mt5)")
     ap.add_argument("--exchange", default=None,
                     help="Crypto exchange id for broker=crypto: binance|bybit|okx|kraken|coinbase")
+    ap.add_argument("--market", default=None, choices=["sim", "mt5", "crypto"],
+                    help="Market data source override (default from config: sim)")
+    ap.add_argument("--news", default=None, choices=["sim", "rss", "factory"],
+                    help="News feed source override (rss = live public RSS, no key)")
     ap.add_argument("--steps", type=int, default=None, help="Bound run length (tests/quick runs)")
     ap.add_argument("--generate", metavar="OUT", default=None, help="Generate sample history JSONL")
     ap.add_argument("--gen-steps", dest="gen_steps", type=int, default=3000)

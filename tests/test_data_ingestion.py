@@ -83,3 +83,63 @@ def test_sim_market_feed_emits_tick_and_candle():
     for _ in range(cfg.get("data.market.sim.candles_per_tick", 5) - 1):
         feed.run_once()
     assert EventType.CANDLE.value in seen
+
+
+def test_crypto_feed_symbol_normalization():
+    """BTCUSDT -> BTC/USDT; MT5-style symbols (EURUSD/XAUUSD) are skipped (None)."""
+    from data_ingestion.market_feeds.feeds import CryptoMarketFeed
+
+    assert CryptoMarketFeed._to_ccxt_symbol("BTCUSDT") == "BTC/USDT"
+    assert CryptoMarketFeed._to_ccxt_symbol("ETH/USDT") == "ETH/USDT"
+    assert CryptoMarketFeed._to_ccxt_symbol("SOLUSDC") == "SOL/USDC"
+    assert CryptoMarketFeed._to_ccxt_symbol("EURUSD") is None       # USD quote ambiguous -> skip
+    assert CryptoMarketFeed._to_ccxt_symbol("XAUUSD") is None       # metal, not crypto -> skip
+
+
+def test_crypto_feed_emits_from_mocked_ccxt(monkeypatch):
+    """CryptoMarketFeed emits TICK+CANDLE from a fake ccxt exchange (no network)."""
+    from data_ingestion.market_feeds import feeds as feeds_mod
+
+    cfg = Config.load()
+    cfg.set("symbols", ["BTCUSDT"])
+    cfg.set("execution.exchange", "binance")
+    feed = feeds_mod.CryptoMarketFeed(MessageBus(), cfg, Clock(), Metrics())
+
+    class FakeEx:
+        def fetch_ticker(self, pair):
+            return {"bid": 60000.0, "ask": 60010.0, "last": 60005.0, "baseVolume": 12.5}
+
+        def fetch_ohlcv(self, pair, timeframe="1m", limit=1):
+            return [[0, 60000.0, 60100.0, 59900.0, 60005.0, 12.5]]
+
+    feed._ex = FakeEx()  # inject fake, bypass start()/network
+    feed._running = True
+    seen = []
+    feed.bus.subscribe(EventType.TICK, lambda e: seen.append("tick"))
+    feed.bus.subscribe(EventType.CANDLE, lambda e: seen.append("candle"))
+    feed.run_once()
+    assert "tick" in seen and "candle" in seen
+
+
+def test_rss_news_feed_emits_from_mocked_feedparser(monkeypatch):
+    """RSSNewsFeed emits NEWS events from a fake feedparser (no network)."""
+    import types
+    from data_ingestion.news_feeds import feeds as nfeeds
+
+    fake = types.SimpleNamespace(entries=[
+        {"id": "1", "title": "BTC rallies on ETF inflows", "summary": "...", "link": "http://x/1"},
+        {"id": "2", "title": "EURUSD dips after CPI", "summary": "...", "link": "http://x/2"},
+    ])
+    fake_module = types.SimpleNamespace(parse=lambda url: fake)
+    monkeypatch.setitem(sys.modules, "feedparser", fake_module)
+
+    cfg = Config.load()
+    cfg.set("data.news.rss_feeds", ["http://fake/feed"])
+    feed = nfeeds.RSSNewsFeed(MessageBus(), cfg, Clock(), Metrics())
+    out = []
+    feed.bus.subscribe(EventType.NEWS, lambda e: out.append(e))
+    feed.start()  # initial poll pulls both entries
+    assert len(out) == 2
+    # de-dup: a second poll of the same entries emits nothing new
+    feed._poll()
+    assert len(out) == 2

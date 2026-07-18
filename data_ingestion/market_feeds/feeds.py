@@ -187,15 +187,89 @@ class MT5MarketFeed(MarketFeed):
 
 
 class CryptoMarketFeed(MarketFeed):
+    """Live crypto market data via ccxt REST polling.
+
+    Exchange is configurable via ``execution.exchange`` (default binance), same registry as
+    the broker, so feed + execution stay on the same venue. Public market data (ticker,
+    OHLCV, order book) needs NO API key; keys are only required to trade. Polls each symbol
+    every ``interval`` seconds and emits TICK / CANDLE / ORDER_BOOK. Network errors degrade
+    gracefully so a hiccup never crashes the loop.
+
+    Only symbols in ccxt unified form (e.g. ``BTC/USDT``) are polled; MT5-style symbols
+    (``EURUSD``, ``XAUUSD``) are skipped — those belong to the MT5 feed.
+    """
+
+    def __init__(self, bus, cfg, clock, metrics):
+        super().__init__(bus, cfg, clock, metrics, name="crypto.market")
+        self.interval = float(cfg.get("data.market.crypto.interval_s", 2.0))
+        self.exchange_id = str(cfg.get("execution.exchange", "binance")).lower()
+        self._seq = 0
+        self._ex = None
+        # Normalize symbols to ccxt unified form: BTCUSDT -> BTC/USDT (best-effort).
+        self._pairs = {s: self._to_ccxt_symbol(s) for s in self.symbols}
+
+    @staticmethod
+    def _to_ccxt_symbol(sym: str) -> Optional[str]:
+        if "/" in sym:
+            return sym
+        # Only auto-split crypto-native quote currencies. USD/EUR are ambiguous with
+        # forex/metals (EURUSD, XAUUSD), so those must be given in explicit BASE/QUOTE form.
+        for quote in ("USDT", "USDC", "BTC"):
+            if sym.endswith(quote) and len(sym) > len(quote):
+                return f"{sym[:-len(quote)]}/{quote}"
+        return None  # not a recognizable crypto pair -> skip
+
     def start(self) -> None:
         super().start()
         try:
-            import ccxt.async_support as ccxt
+            import ccxt
 
-            self._ex = ccxt.binance()
-            log.info("Crypto feed: %s symbols", [s for s in self.symbols if "USDT" in s])
-        except Exception as exc:
+            klass = getattr(ccxt, self.exchange_id, ccxt.binance)
+            self._ex = klass({"enableRateLimit": True})
+            active = [s for s, p in self._pairs.items() if p]
+            log.info("Crypto feed (%s) live for %s", self.exchange_id, active)
+        except Exception as exc:  # noqa: BLE001
             log.warning("Crypto feed unavailable: %s", exc)
+            self._ex = None
+
+    def _poll_symbol(self, sym: str, pair: str) -> None:
+        try:
+            t = self._ex.fetch_ticker(pair)
+            bid = float(t.get("bid") or t.get("last") or 0.0)
+            ask = float(t.get("ask") or t.get("last") or 0.0)
+            last = float(t.get("last") or (bid + ask) / 2)
+            vol = float(t.get("baseVolume") or 0.0)
+            self.emit(normalize_tick(self.exchange_id, sym, bid=bid, ask=ask, last=last,
+                                     volume=vol, time=self.clock.now(), sequence=self._seq))
+            ohlcv = self._ex.fetch_ohlcv(pair, timeframe="1m", limit=1)
+            if ohlcv:
+                o, h, l, c, v = ohlcv[-1][1], ohlcv[-1][2], ohlcv[-1][3], ohlcv[-1][4], ohlcv[-1][5]
+                self.emit(normalize_candle(self.exchange_id, sym, self.timeframe, open_=float(o),
+                                           high=float(h), low=float(l), close=float(c),
+                                           volume=float(v), time=self.clock.now(), sequence=self._seq))
+            if self.cfg.get("analytics.order_flow.enabled", False):
+                book = self._ex.fetch_order_book(pair, limit=5)
+                self.emit(normalize_order_book(self.exchange_id, sym, bids=book["bids"][:5],
+                                               asks=book["asks"][:5], time=self.clock.now(),
+                                               sequence=self._seq))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Crypto poll failed for %s: %s", pair, exc)
+
+    def run_once(self) -> None:
+        if self._ex is None:
+            return
+        for sym, pair in self._pairs.items():
+            if pair:
+                self._poll_symbol(sym, pair)
+                self._seq += 1
+
+    def run_realtime(self, steps: Optional[int] = None) -> None:
+        i = 0
+        while self._running and (steps is None or i < steps):
+            self.run_once()
+            i += 1
+            if self.interval > 0 and self._running:
+                time.sleep(self.interval)
 
 
 def build_market_feed(bus: MessageBus, cfg: Config, clock: Clock, metrics: Metrics) -> MarketFeed:

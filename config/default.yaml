@@ -22,11 +22,15 @@ data:
     sim:
       interval_s: 1.0
       candles_per_tick: 5
+    crypto:
+      interval_s: 2.0           # ccxt REST poll cadence (public data, no key needed)
   news:
     source: sim                 # sim | rss | factory
     sim:
       every_n_ticks: 20
-    rss_feeds: []
+    rss:
+      poll_every_n_ticks: 200   # re-poll live RSS feeds every N ticks
+    rss_feeds: []               # empty -> built-in forexlive/investing/cointelegraph/fxstreet
 
 analytics:
   regime_model: statistical
