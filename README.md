@@ -56,7 +56,17 @@ deterministic replay harness that runs the **real** pipeline components on recor
 ### Governance model (per architecture §5/§6)
 
 - **L6 Risk is the single, unified veto authority.** L5 Execution **refuses** any order the
-  signed veto does not explicitly `allow`. No layer can bypass the veto.
+  signed veto does not explicitly `allow`.
+- **Veto decisions are cryptographically signed** (HMAC-SHA256 over the proposal + decision,
+  keyed by `RISK_SIGNING_KEY`). The signature is embedded in every `RISK_VETO` event.
+- **Verification is fail-closed and happens twice:**
+  1. **L4 FSM** (`StrategyOrchestrator.on_veto`) re-verifies the veto signature before
+     forwarding an `allow` to execution. An unverifiable veto is dropped and the position
+     reset — counted under `veto_signature_rejected`.
+  2. **L5 Execution** (`OrderManager.on_proposal`) is the *ultimate* authority: it
+     independently re-verifies the carried veto signature and refuses to place the order
+     (emitting `ORDER_REJECT`, reason `veto-signature-unverified`) if it fails. No signature
+     → no order, ever.
 - **Circuit breaker trips once and requires a human to re-arm** (`reset()`) — it never
   auto-recovers, preventing runaway loops.
 - **Order-flow (ICT-style) hypotheses are coded but DISABLED by default** (`analytics.order_flow.enabled: false`) —

@@ -25,6 +25,7 @@ from core.events import EventType, make_event, NormalizedEvent
 from core.metrics import Metrics
 
 from .broker_adapter import BrokerAdapter, build_broker
+from risk_management.veto_service import RiskVetoService
 
 log = logging.getLogger("execution.order_manager")
 
@@ -39,6 +40,7 @@ class OrderManager(Component):
         self.adaptive_rtt = bool(cfg.get("execution.poll_rtt_adaptive", True))
         self._rtt = 0.05  # measured round-trip time (s), starts conservative
         self._open: Dict[str, dict] = {}
+        self._risk_secret = cfg.secret("RISK_SIGNING_KEY", "cryptonaute-local-dev-key")
 
     def start(self) -> None:
         self._running = True
@@ -61,7 +63,32 @@ class OrderManager(Component):
     def on_proposal(self, ev: NormalizedEvent) -> None:
         if not ev.payload.get("execute", False) or ev.payload.get("veto") != "allow":
             return
+        # Architecture §5: the execution layer is the *ultimate* authority and must act
+        # only on a fully verified, signed risk permission. Independently re-verify the
+        # risk veto signature before sending any order. A forged/missing signature means
+        # NO order is placed (fail-closed).
+        if not self._verify_veto(ev.payload):
+            log.error("Refusing order for %s: risk veto signature NOT verified (fail-closed)",
+                      ev.payload.get("symbol"))
+            self.metrics.inc("execution_veto_unverified")
+            self.emit(make_event(
+                EventType.ORDER_REJECT, "execution.order_manager",
+                payload={"symbol": ev.payload.get("symbol"), "reason": "veto-signature-unverified",
+                         "proposal": ev.payload},
+                symbol_impact=[ev.payload.get("symbol")] if ev.payload.get("symbol") else [],
+                timestamp=self.clock.now(),
+            ))
+            return
         self._execute(ev.payload)
+
+    def _verify_veto(self, proposal: dict) -> bool:
+        """Re-verify the risk veto signature carried on the proposal."""
+        signed_payload = {
+            "decision": "allow",
+            "proposal": proposal.get("veto_proposal") or {},
+            "signature": proposal.get("veto_signature"),
+        }
+        return RiskVetoService.verify(self._risk_secret, signed_payload)
 
     def _execute(self, proposal: dict) -> None:
         sym = proposal["symbol"]

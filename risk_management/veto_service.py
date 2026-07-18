@@ -57,11 +57,31 @@ class RiskVetoService(Component):
             EventType.RISK_VETO, "risk.veto",
             payload={"symbol": ev.payload.get("symbol"), "decision": decision,
                      "reasons": reasons, "signature": signed,
-                     "proposal_ref": ev.event_id},
+                     "proposal_ref": ev.event_id, "proposal": dict(ev.payload)},
             symbol_impact=[ev.payload.get("symbol")] if ev.payload.get("symbol") else [],
             timestamp=self.clock.now(),
         ))
         self.metrics.inc("risk_veto_emitted")
+
+    # ---- signature (architecture §5: veto decisions are signed + verified) ----
+    @staticmethod
+    def _sign_payload(secret: str, proposal: dict, decision: str) -> str:
+        blob = json.dumps({k: proposal.get(k) for k in sorted(proposal)}, sort_keys=True) + decision
+        return hashlib.sha256((blob + secret).encode()).hexdigest()[:16]
+
+    def _sign(self, proposal: dict, decision: str) -> str:
+        return self._sign_payload(self.secret, proposal, decision)
+
+    @classmethod
+    def verify(cls, secret: str, payload: dict) -> bool:
+        """Return True iff the RISK_VETO payload carries a valid signature over its
+        decision + proposal fields. Execution refuses any veto that fails this check."""
+        sig = payload.get("signature")
+        if not sig:
+            return False
+        proposal = payload.get("proposal", {}) or {}
+        decision = payload.get("decision", "")
+        return cls._sign_payload(secret, proposal, decision) == sig
 
     # ---- evaluation ---------------------------------------------------
     def _evaluate(self, proposal: dict) -> Tuple[str, List[str]]:

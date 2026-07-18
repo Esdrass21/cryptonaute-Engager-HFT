@@ -19,6 +19,8 @@ from core.config import Clock, Config
 from core.events import EventType, make_event, NormalizedEvent
 from core.metrics import Metrics
 
+from risk_management.veto_service import RiskVetoService
+
 log = logging.getLogger("strategy.fsm")
 
 try:
@@ -81,6 +83,7 @@ class StrategyOrchestrator(Component):
         super().__init__(bus, cfg, clock, metrics, name="strategy.fsm")
         self._fsms: Dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", [])}
         self._pending_veto: Dict[str, dict] = {}
+        self._risk_secret = cfg.secret("RISK_SIGNING_KEY", "cryptonaute-local-dev-key")
 
     def start(self) -> None:
         self._running = True
@@ -106,9 +109,19 @@ class StrategyOrchestrator(Component):
 
     def on_veto(self, ev: NormalizedEvent) -> None:
         sym = ev.payload.get("symbol")
-        decision = ev.payload.get("decision")
         if sym not in self._pending_veto:
             return
+        # Architecture §5: execution only acts on a *verified, signed* risk permission.
+        # Reject any veto whose signature does not validate against the shared signing key.
+        if not RiskVetoService.verify(self._risk_secret, ev.payload):
+            log.error("RISK VETO for %s FAILED signature verification — DROPPED (tamper/forgery)", sym)
+            self.metrics.inc("veto_signature_rejected")
+            self._pending_veto.pop(sym, None)
+            fsm = self._fsms.get(sym)
+            if fsm is not None:
+                fsm.reset()
+            return
+        decision = ev.payload.get("decision")
         proposal = self._pending_veto.pop(sym)
         fsm = self._fsms[sym]
         if decision == "allow":
@@ -116,7 +129,9 @@ class StrategyOrchestrator(Component):
             fsm.manage()
             self.emit(make_event(
                 EventType.ORDER_PROPOSAL, "strategy.fsm",
-                payload={**proposal, "veto": "allow", "execute": True},
+                payload={**proposal, "veto": "allow", "execute": True,
+                         "veto_signature": ev.payload.get("signature"),
+                         "veto_proposal": ev.payload.get("proposal")},
                 symbol_impact=[sym], timestamp=self.clock.now(),
             ))
             self.metrics.inc("order_forwarded_to_execution")
