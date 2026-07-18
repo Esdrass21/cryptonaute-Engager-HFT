@@ -129,6 +129,10 @@ class QuantAnalytics(Component):
         self._recent[sym].append(c)
         if len(self._recent[sym]) > 30:
             self._recent[sym].pop(0)
+        # update incremental indicator state on EVERY candle (not only when emitting),
+        # so the EMA/RSI start from the first close and match the pure reference exactly.
+        self._update_ema(sym, c)
+        self._update_rsi(sym, c)
         if len(bars) >= self._slow + 2:
             self._emit_signal(sym)
 
@@ -169,7 +173,7 @@ class QuantAnalytics(Component):
     def _emit_signal(self, sym: str) -> None:
         bars = self._candles[sym]
         c = bars[-1].c
-        self._update_ema(sym, c)
+        # state (EMA/RSI) already updated per-candle in on_candle; read it here.
         ma_f = self._ema_f[sym]
         ma_s = self._ema_s[sym]
         ma_dir = 1.0 if ma_f > ma_s else -1.0
@@ -178,7 +182,7 @@ class QuantAnalytics(Component):
         recent = self._recent[sym]
         vol = float(np.std(recent)) + 1e-9 if len(recent) >= 2 else 1e-9
         trend_conv = float(np.clip((ma_f - ma_s) / vol, -1.0, 1.0))
-        r = self._update_rsi(sym, c)
+        r = self._rsi_buf_state(sym)
         if np.isnan(r):
             r = 50.0
         if r > 70:
@@ -201,3 +205,15 @@ class QuantAnalytics(Component):
         )
         self.emit(ev)
         self.metrics.inc("tech_signal_emitted")
+
+    def _rsi_buf_state(self, sym: str) -> float:
+        """Final RSI from the rolling delta buffer (no mutation — state set in on_candle)."""
+        buf = self._rsi_buf[sym]
+        if len(buf) < 2:
+            return 50.0
+        gains = [max(0.0, buf[i] - buf[i - 1]) for i in range(1, len(buf))]
+        losses = [max(0.0, buf[i - 1] - buf[i]) for i in range(1, len(buf))]
+        ag = sum(gains) / len(gains)
+        al = sum(losses) / len(losses)
+        rs = ag / (al + 1e-9)
+        return float(100 - 100 / (1 + rs))
