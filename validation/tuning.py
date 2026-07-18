@@ -15,8 +15,8 @@ Score = net P&L (balance - starting capital), subject to guards:
 
 Usage
 -----
-    python -m validation.tuning --history data/sample.jsonl --trials 24
-    cryptonaute --tune data/sample.jsonl        # writes config/tuned.yaml
+    python -m validation.tuning --history data/trend.jsonl --trials 24
+    cryptonaute --tune data/trend.jsonl        # writes config/tuned.yaml
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import copy
 import itertools
-import json
 import logging
 import random
 from dataclasses import dataclass
@@ -151,8 +150,10 @@ def write_tuned_config(result: TrialResult, out: str = "config/tuned.yaml") -> s
     }
     path = Path(out)
     path.parent.mkdir(parents=True, exist_ok=True)
+    import yaml as _yaml
+
     with path.open("w", encoding="utf-8") as fh:
-        json.dump(doc, fh, indent=2)  # YAML-compatible enough; keep as JSON for round-trip safety
+        _yaml.safe_dump(doc, fh, default_flow_style=False, sort_keys=False)
     return str(path)
 
 
