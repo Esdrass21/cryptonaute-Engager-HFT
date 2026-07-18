@@ -17,16 +17,25 @@ ccxt crypto, Redis, FinBERT, Mistral) activate only when configured and availabl
 python -m venv .venv312 && . .venv312/Scripts/activate      # Windows
 pip install -e .
 
-# 2. Generate deterministic sample history
+# 2. Generate deterministic sample history (pure GBM — no exploitable edge; gate stays red)
 cryptonaute --generate data/sample.jsonl --gen-steps 3000
 
-# 3. Validate: replay through the REAL pipeline + vectorized backtest + walk-forward + Monte Carlo
-cryptonaute --validate data/sample.jsonl
+# 3. (Optional but realistic) generate TRENDED history with a persistent, detectable edge
+cryptonaute --generate data/trend.jsonl --gen-steps 3000 --trendy 0.0015 --reversion 0.004
 
-# 4. Paper-trade simulation (sim market + paper broker)
+# 4. Tune the strategy against history through the REAL pipeline. Writes config/tuned.yaml
+#    with the best gate-passing config (positive expectancy + acceptable drawdown).
+cryptonaute --tune data/trend.jsonl --trials 24 --min-trades 5 --max-dd 5
+
+# 5. Validate: replay through the REAL pipeline + vectorized backtest + walk-forward + Monte
+#    Carlo. Auto-loads config/tuned.yaml when present and prints RESULT: PASS/FAIL (exit 1
+#    on FAIL, so it is safe as a deploy gate in CI).
+cryptonaute --validate data/trend.jsonl
+
+# 6. Paper-trade simulation (sim market + paper broker). Uses the tuned config automatically.
 cryptonaute --paper --steps 500
 
-# 5. Live trading (requires MT5 terminal / exchange keys in config + .env)
+# 7. Live trading (requires MT5 terminal / exchange keys in config + .env)
 cryptonaute --live
 ```
 
@@ -35,6 +44,11 @@ Run the test suite (deterministic, no network):
 ```bash
 pytest -q
 ```
+
+> **Why two generators?** `data/sample.jsonl` is pure GBM (no signal) — it exists to prove
+> the gate correctly *rejects* noise (negative expectancy → `RESULT: FAIL`, exit 1).
+> `data/trend.jsonl` carries a real, persistent edge so the tuning harness can discover a
+> tradeable configuration and the gate goes GREEN.
 
 ---
 
@@ -136,6 +150,11 @@ risk hard/soft caps, drawdown limit, correlation threshold, circuit-breaker limi
 `infra/` contains a `Dockerfile`, `docker-compose.yml` (redis + app + prometheus + grafana),
 and `infra/monitoring/` (prometheus scrape config + grafana dashboard JSON). The platform
 exposes Prometheus metrics via `core.metrics`.
+
+```bash
+# build and run the full stack (prometheus + grafana dashboards on :9090 / :3000)
+docker compose -f infra/docker-compose.yml up --build
+```
 
 ---
 
