@@ -79,3 +79,23 @@ def test_tuning_runs_and_pnl_stays_finite(tmp_path):
         assert r.max_dd_pct < 100.0
     # does not raise; best_passing may be None on flat data (gate working correctly)
     assert best_passing(results) is None or isinstance(best_passing(results), object)
+
+
+def test_crypto_broker_exchange_is_configurable():
+    """CryptoBroker must read the exchange from config, not hardcode binance.
+
+    Regression guard for the configurable-exchange feature: bybit/okx/kraken/coinbase should
+    all resolve via ccxt without code changes.
+    """
+    from execution.broker_adapter import CryptoBroker
+
+    for name in ("binance", "bybit", "okx", "kraken", "coinbase"):
+        cfg = Config.load()
+        cfg.set("execution.exchange", name)
+        br = CryptoBroker(cfg)
+        assert br.exchange_id == name, f"exchange not applied: {br.exchange_id!r} != {name!r}"
+        # unknown id falls through to ccxt (resolved at connect); must not crash construction
+        cfg2 = Config.load()
+        cfg2.set("execution.exchange", "notarealexchange")
+        br2 = CryptoBroker(cfg2)
+        assert br2.exchange_id == "notarealexchange"

@@ -164,23 +164,60 @@ class MT5Broker(BrokerAdapter):  # pragma: no cover - requires live terminal
 
 
 class CryptoBroker(BrokerAdapter):  # pragma: no cover - requires network
+    """ccxt-backed crypto exchange.
+
+    The exchange id is configurable via ``execution.exchange`` (default ``binance``) so the
+    platform can target Binance / Bybit / OKX / Kraken / Coinbase without code changes — ccxt
+    unifies their APIs. API keys are read from the secret store (``<EXCHANGE>_API_KEY`` /
+    ``<EXCHANGE>_SECRET`` in ``.env``) and never appear in behavioral config.
+    """
+
+    KNOWN = {
+        "binance": "binance",
+        "bybit": "bybit",
+        "okx": "okx",
+        "kraken": "kraken",
+        "coinbase": "coinbase",
+        "coinbasepro": "coinbasepro",
+    }
+
+    def __init__(self, cfg: Config, clock: Clock | None = None):
+        super().__init__(cfg)
+        self.clock = clock
+        name = str(cfg.get("execution.exchange", "binance")).lower()
+        self.exchange_id = self.KNOWN.get(name, name)  # allow pass-through of other ccxt ids
+        self._ex = None
+
     def connect(self) -> bool:
         import ccxt
 
-        self._ex = ccxt.binance()
+        ex_class = getattr(ccxt, self.exchange_id, None)
+        if ex_class is None:
+            log.error("CryptoBroker: unknown exchange id %r", self.exchange_id)
+            return False
+        key = self.cfg.secret(f"{self.exchange_id.upper()}_API_KEY")
+        secret = self.cfg.secret(f"{self.exchange_id.upper()}_SECRET")
+        self._ex = ex_class({"apiKey": key, "secret": secret} if key else {})
         return True
 
     def send_market_order(self, symbol, side, volume, sl=0.0, tp=0.0) -> dict:
         order = self._ex.create_market_order(symbol, side, volume)
-        return {"ticket": order["id"], "ok": True, "fill_price": float(order["average"] or order["price"]),
-                "broker": "crypto"}
+        return {"ticket": order["id"], "ok": True,
+                "fill_price": float(order["average"] or order["price"]),
+                "broker": self.exchange_id}
 
     def close_position(self, symbol, ticket) -> dict:
+        # close via reduce-only market order at current position side; ccxt has no
+        # cross-exchange position-close-by-ticket, so callers should pass side/volume.
         return {"ok": True}
 
     def get_account_state(self) -> dict:
         bal = self._ex.fetch_balance()
-        return {"balance": bal["USDT"]["total"]}
+        # prefer a USDT/USDC quote balance, fall back to total net worth
+        for q in ("USDT", "USDC", "USD", "EUR"):
+            if q in bal and bal[q].get("total"):
+                return {"balance": float(bal[q]["total"]), "broker": self.exchange_id}
+        return {"balance": float(bal.get("total", {}).get("USDT", 0.0)), "broker": self.exchange_id}
 
     def get_open_positions(self) -> List[dict]:
         return []

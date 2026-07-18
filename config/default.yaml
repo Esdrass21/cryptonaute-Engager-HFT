@@ -65,6 +65,7 @@ strategy:
 
 execution:
   broker: paper                 # paper | mt5 | crypto
+  exchange: binance             # when broker=crypto: binance | bybit | okx | kraken | coinbase
   max_retry: 3
   base_backoff_s: 0.5
   slippage_tolerance_pct: 0.05

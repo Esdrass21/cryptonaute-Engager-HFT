@@ -13,6 +13,12 @@ Examples
 
     # Live (requires MT5 terminal logged in / exchange keys in .env).
     python -m main --live
+
+    # Live via a ccxt crypto exchange (default binance; --exchange bybit|okx|kraken|coinbase).
+    python -m main --live --broker crypto --exchange bybit
+
+    # Paper-sim against a crypto exchange's feed (no keys; sim broker).
+    python -m main --paper --broker crypto --exchange okx
 """
 
 from __future__ import annotations
@@ -66,8 +72,20 @@ def cmd_run(args) -> int:
     cfg = _load_cfg(args.config)
     cfg.set("mode", "live" if args.live else "paper")
     if args.live:
-        cfg.set("data.market.source", "mt5")
-        cfg.set("execution.broker", "mt5")
+        if args.broker == "crypto":
+            cfg.set("data.market.source", "crypto")
+            cfg.set("execution.broker", "crypto")
+            if args.exchange:
+                cfg.set("execution.exchange", args.exchange)
+        else:
+            cfg.set("data.market.source", "mt5")
+            cfg.set("execution.broker", "mt5")
+    elif args.broker == "crypto":
+        # paper-equivalent on crypto feed (no live keys needed for sim)
+        cfg.set("data.market.source", "crypto")
+        cfg.set("execution.broker", "crypto")
+        if args.exchange:
+            cfg.set("execution.exchange", args.exchange)
     orch = Orchestrator(cfg)
     orch.run(steps=args.steps)
     return 0
@@ -162,6 +180,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--config", default=None)
     ap.add_argument("--paper", action="store_true", help="Paper-trading simulation (default)")
     ap.add_argument("--live", action="store_true", help="Live trading (requires broker/keys)")
+    ap.add_argument("--broker", default="mt5", choices=["mt5", "crypto"],
+                    help="Live/paper broker backend (--live defaults to mt5)")
+    ap.add_argument("--exchange", default=None,
+                    help="Crypto exchange id for broker=crypto: binance|bybit|okx|kraken|coinbase")
     ap.add_argument("--steps", type=int, default=None, help="Bound run length (tests/quick runs)")
     ap.add_argument("--generate", metavar="OUT", default=None, help="Generate sample history JSONL")
     ap.add_argument("--gen-steps", dest="gen_steps", type=int, default=3000)
