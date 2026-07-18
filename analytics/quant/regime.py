@@ -26,11 +26,13 @@ class RegimeDetector(Component):
         super().__init__(bus, cfg, clock, metrics, name="analytics.regime")
         self.lookback = lookback
         self._closes: Dict[str, list] = {}
+        self._rets: Dict[str, list] = {}          # last 30 log-returns (rolling estimate)
 
     def start(self) -> None:
         self._running = True
         for s in self.cfg.get("symbols", []):
             self._closes[s] = []
+            self._rets[s] = []
         self.bus.subscribe(EventType.CANDLE, self.on_candle)
         log.info("Regime detector online")
 
@@ -43,8 +45,13 @@ class RegimeDetector(Component):
             self._emit(sym)
 
     def _emit(self, sym: str) -> None:
-        c = np.array(self._closes[sym])
-        rets = np.diff(np.log(c))
+        c = self._closes[sym]
+        # incremental log-return buffer (last 30) — avoids rescanning the whole lookback
+        rbuf = self._rets[sym]
+        rbuf.append(np.log(c[-1] / c[-2]))
+        if len(rbuf) > 30:
+            rbuf.pop(0)
+        rets = np.array(rbuf)
         vol = float(np.std(rets) * np.sqrt(288))
         trend = float((c[-1] - c[0]) / (c[0] + 1e-9))
         adf_like = float(np.std(rets)) / (np.mean(np.abs(rets)) + 1e-9)

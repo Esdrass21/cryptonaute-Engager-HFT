@@ -72,48 +72,113 @@ def macd(series: np.ndarray, fast: int = 12, slow: int = 26, sig: int = 9):
 
 
 class QuantAnalytics(Component):
-    """Consumes CANDLE events, computes indicators, emits TECH_SIGNAL."""
+    """Consumes CANDLE events, computes indicators, emits TECH_SIGNAL.
+
+    EMA and RSI are maintained *incrementally* (stateful, O(1) per candle) instead of
+    recomputing a full-window pandas rolling each time — this is the dominant cost on the
+    hot path and was previously O(lookback) per candle / O(lookback^2) per run.
+    """
 
     def __init__(self, bus, cfg, clock, metrics, lookback: int = 200):
         super().__init__(bus, cfg, clock, metrics, name="analytics.quant")
         self.lookback = lookback
-        self._bars: Dict[str, List[Candle]] = {}
+        self._candles: Dict[str, list] = {}          # bounded list of Candle (last `lookback`)
         self.symbols = cfg.get("symbols", [])
         self._fast = int(cfg.get("analytics.quant.ma_fast", 12))
         self._slow = int(cfg.get("analytics.quant.ma_slow", 26))
         self._rsi_n = int(cfg.get("analytics.quant.rsi_n", 14))
+        # incremental state per symbol
+        self._ema_f: Dict[str, float] = {}
+        self._ema_s: Dict[str, float] = {}
+        self._ema_f_seeded: Dict[str, bool] = {}
+        self._ema_s_seeded: Dict[str, bool] = {}
+        self._rsi_buf: Dict[str, list] = {}          # last rsi_n deltas (rolling SMA of gain/loss)
+        self._rsi_seeded: Dict[str, bool] = {}
+        self._recent: Dict[str, list] = {}           # last <=30 closes for vol estimate
 
     def start(self) -> None:
         self._running = True
         for s in self.symbols:
-            self._bars[s] = []
+            self._candles[s] = []
+            self._ema_f[s] = 0.0
+            self._ema_s[s] = 0.0
+            self._ema_f_seeded[s] = False
+            self._ema_s_seeded[s] = False
+            self._rsi_buf[s] = []
+            self._rsi_seeded[s] = False
+            self._recent[s] = []
         self.bus.subscribe(EventType.CANDLE, self.on_candle)
         log.info("Quant analytics online (symbols=%s)", self.symbols)
 
     def on_candle(self, ev: NormalizedEvent) -> None:
         sym = ev.payload["symbol"]
-        if sym not in self._bars:
-            self._bars[sym] = []
+        if sym not in self._candles:
+            self._candles[sym] = []
+            self._ema_f[sym] = self._ema_s[sym] = 0.0
+            self._ema_f_seeded[sym] = self._ema_s_seeded[sym] = False
+            self._rsi_buf[sym] = []
+            self._rsi_seeded[sym] = False
+            self._recent[sym] = []
         p = ev.payload
-        self._bars[sym].append(Candle(p["time"] if "time" in p else self.clock.now(),
-                                       p["open"], p["high"], p["low"], p["close"], p["volume"]))
-        if len(self._bars[sym]) > self.lookback:
-            self._bars[sym] = self._bars[sym][-self.lookback:]
-        if len(self._bars[sym]) >= self._slow + 2:
+        c = p["close"]
+        bars = self._candles[sym]
+        bars.append(Candle(p["time"] if "time" in p else self.clock.now(),
+                           p["open"], p["high"], p["low"], c, p["volume"]))
+        if len(bars) > self.lookback:
+            bars.pop(0)
+        self._recent[sym].append(c)
+        if len(self._recent[sym]) > 30:
+            self._recent[sym].pop(0)
+        if len(bars) >= self._slow + 2:
             self._emit_signal(sym)
 
+    def _update_ema(self, sym: str, price: float) -> None:
+        af = 2.0 / (self._fast + 1)
+        as_ = 2.0 / (self._slow + 1)
+        if not self._ema_f_seeded[sym]:
+            self._ema_f[sym] = price
+            self._ema_f_seeded[sym] = True
+        else:
+            self._ema_f[sym] = price * af + self._ema_f[sym] * (1 - af)
+        if not self._ema_s_seeded[sym]:
+            self._ema_s[sym] = price
+            self._ema_s_seeded[sym] = True
+        else:
+            self._ema_s[sym] = price * as_ + self._ema_s[sym] * (1 - as_)
+
+    def _update_rsi(self, sym: str, price: float) -> float:
+        buf = self._rsi_buf[sym]
+        n = self._rsi_n
+        if not buf:
+            buf.append(price)
+            return 50.0
+        prev = buf[-1]
+        delta = price - prev
+        if len(buf) <= n:                      # warm-up: simple rolling window
+            buf.append(price)
+        else:
+            buf.append(price)
+            buf.pop(0)
+        gains = [max(0.0, buf[i] - buf[i - 1]) for i in range(1, len(buf))]
+        losses = [max(0.0, buf[i - 1] - buf[i]) for i in range(1, len(buf))]
+        ag = sum(gains) / len(gains)
+        al = sum(losses) / len(losses)
+        rs = ag / (al + 1e-9)
+        return float(100 - 100 / (1 + rs))
+
     def _emit_signal(self, sym: str) -> None:
-        bars = self._bars[sym]
-        closes = np.array([b.c for b in bars])
-        ma_f = ema(closes, self._fast)[-1]
-        ma_s = ema(closes, self._slow)[-1]
+        bars = self._candles[sym]
+        c = bars[-1].c
+        self._update_ema(sym, c)
+        ma_f = self._ema_f[sym]
+        ma_s = self._ema_s[sym]
         ma_dir = 1.0 if ma_f > ma_s else -1.0
         # Trend conviction = (fast-slow EMA gap) normalized by recent volatility — a
         # "trend z-score". Persistent drift produces a stable, strong conviction in [-1, 1].
-        recent = closes[-30:] if len(closes) >= 30 else closes
-        vol = float(np.std(recent)) + 1e-9
+        recent = self._recent[sym]
+        vol = float(np.std(recent)) + 1e-9 if len(recent) >= 2 else 1e-9
         trend_conv = float(np.clip((ma_f - ma_s) / vol, -1.0, 1.0))
-        r = rsi(closes, self._rsi_n)[-1]
+        r = self._update_rsi(sym, c)
         if np.isnan(r):
             r = 50.0
         if r > 70:
