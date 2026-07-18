@@ -1,0 +1,73 @@
+# Cryptonaute HFT — local/dev/prod composition (architecture §8).
+# Same containers in local and prod; only env differs. Redis is the message bus, the app is
+# the full 6-layer platform in paper or live mode, and Prometheus+Grafana provide observability.
+#
+# Usage:
+#   docker compose up --build            # paper mode, full observability
+#   PAPER_OR_LIVE=live docker compose up  # live (needs broker creds in .env)
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      BUS_BACKEND: redis
+      REDIS_URL: redis://redis:6379/0
+      PROMETHEUS_ENABLED: "true"
+    env_file:
+      - .env                       # secrets ONLY (MT5_*, MISTRAL_API_KEY, RISK_SIGNING_KEY)
+    # Override CMD to run paper or live: docker compose run app --live --config config/live.yaml
+    command: ["--paper"]
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    ports:
+      - "9100:9100"               # prometheus metrics
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: changeme   # set via .env in prod
+    volumes:
+      - ./infra/monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/cryptonaute.json:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  redis-data:
+  prom-data:
+  grafana-data:

@@ -1,0 +1,98 @@
+# Cryptonaute HFT — default configuration overlay.
+# This is deep-merged over the built-in Config.DEFAULTS (core/config.py).
+# Behavioral settings live here; secrets live in .env (never committed).
+
+platform:
+  name: cryptonaute-hft
+  version: "3.0.0"
+
+mode: paper                      # paper | live
+
+# Message bus: "memory" (deterministic default) or "redis" (multi-process).
+bus:
+  backend: memory
+  redis_url: null
+
+symbols: ["EURUSD", "XAUUSD", "BTCUSDT"]
+timeframe: M5
+
+data:
+  market:
+    source: sim                 # sim | mt5 | crypto
+    sim:
+      interval_s: 1.0
+      candles_per_tick: 5
+  news:
+    source: sim                 # sim | rss | factory
+    sim:
+      every_n_ticks: 20
+    rss_feeds: []
+
+analytics:
+  regime_model: statistical
+  order_flow:
+    enabled: false              # §3.4: hypotheses NOT validated yet -> OFF
+    validated_only: true
+  quant:
+    ma_fast: 12
+    ma_slow: 26
+    rsi_n: 14
+
+nlp:
+  backend: lexicon              # lexicon | finbert | mistral
+  finbert_model: "ProsusAI/finbert"
+
+self_correction:
+  enabled: true
+  mistral:
+    model: "mistral-large-latest"
+    timeout_s: 20.0
+    backend: stub              # stub | mistral (needs MISTRAL_API_KEY)
+
+strategy:
+  enabled: ["ma_cross", "rsi_mean_reversion"]
+  composite:
+    threshold: 0.55
+    tech_weight: 0.45
+    news_weight: 0.25
+    macro_weight: 0.15
+    regime_weight: 0.10
+    of_weight: 0.05
+  ev:
+    min_expected_value: 0.0
+    calibrated: false          # MUST be true before live (§7.3 gate)
+
+execution:
+  broker: paper                 # paper | mt5 | crypto
+  max_retry: 3
+  base_backoff_s: 0.5
+  slippage_tolerance_pct: 0.05
+  poll_rtt_adaptive: true
+
+risk:
+  max_position_pct: 2.0
+  max_daily_drawdown_pct: 2.0
+  max_correlation: 0.7
+  hard_cap_pct: 5.0            # non-negotiable ceiling
+  var_confidence: 0.95
+  veto_service:
+    enabled: true
+  circuit_breaker:
+    enabled: true
+
+validation:
+  backtest:
+    initial_capital: 10000.0
+  walk_forward:
+    train_pct: 0.6
+    test_pct: 0.4
+    step: 0.2
+  monte_carlo:
+    n_paths: 1000
+    block_size: 10
+
+observability:
+  prometheus:
+    enabled: false
+    port: 9100
+  log_level: INFO

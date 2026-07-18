@@ -1,0 +1,69 @@
+{
+  "dashboard": {
+    "title": "Cryptonaute HFT — Execution & Risk",
+    "uid": "cryptonaute-hft",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "5s",
+    "time": { "from": "now-1h", "to": "now" },
+    "panels": [
+      {
+        "title": "Account Balance",
+        "type": "stat",
+        "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+        "targets": [{ "expr": "account_balance", "legendFormat": "balance" }]
+      },
+      {
+        "title": "Daily Drawdown %  (circuit-breaker limit)",
+        "type": "gauge",
+        "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+        "targets": [{ "expr": "account_drawdown_pct", "legendFormat": "dd%" }],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0, "max": 5,
+            "thresholds": {
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1.5 },
+                { "color": "red", "value": 2 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "title": "Order Fill / Reject rate",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+        "targets": [
+          { "expr": "rate(order_fill[1m])", "legendFormat": "fills/s" },
+          { "expr": "rate(order_reject[1m])", "legendFormat": "rejects/s" }
+        ]
+      },
+      {
+        "title": "Execution round-trip time (s, p95)",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+        "targets": [{ "expr": "execution_rtt_s_p95", "legendFormat": "rtt p95" }]
+      },
+      {
+        "title": "Composite / Tech signals emitted",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+        "targets": [
+          { "expr": "rate(composite_signal_emitted[1m])", "legendFormat": "composite/s" },
+          { "expr": "rate(tech_signal_emitted[1m])", "legendFormat": "tech/s" }
+        ]
+      },
+      {
+        "title": "Risk veto decisions",
+        "type": "timeseries",
+        "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
+        "targets": [
+          { "expr": "rate(risk_veto_emitted[1m])", "legendFormat": "vetoes/s" },
+          { "expr": "circuit_breaker_trips", "legendFormat": "breaker trips" }
+        ]
+      }
+    ]
+  }
+}

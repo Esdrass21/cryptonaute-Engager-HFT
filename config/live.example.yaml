@@ -1,0 +1,58 @@
+# Live configuration example — DO NOT commit secrets here.
+# Copy to config/live.yaml, fill broker credentials via .env, and run:
+#   python -m cryptonaute_hft.main --live --config config/live.yaml
+
+# Secrets (never in this file): put these in .env
+#   MT5_LOGIN=...
+#   MT5_PASSWORD=...
+#   MT5_SERVER=...
+#   MISTRAL_API_KEY=...
+#   BINANCE_API_KEY=...  BINANCE_API_SECRET=...
+#   RISK_SIGNING_KEY=...
+
+mode: live
+
+bus:
+  backend: redis
+  redis_url: "redis://localhost:6379/0"
+
+symbols: ["EURUSD", "XAUUSD"]
+timeframe: M5
+
+data:
+  market:
+    source: mt5
+  news:
+    source: rss
+
+analytics:
+  order_flow:
+    enabled: false              # turn on only after §7.3 validation
+
+nlp:
+  backend: finbert
+
+self_correction:
+  mistral:
+    backend: mistral
+
+strategy:
+  composite:
+    threshold: 0.60
+  ev:
+    calibrated: true           # only after walk-forward + MC + paper pass
+
+execution:
+  broker: mt5
+  slippage_tolerance_pct: 0.03
+
+risk:
+  max_position_pct: 1.0
+  max_daily_drawdown_pct: 1.5
+  hard_cap_pct: 2.0
+
+observability:
+  prometheus:
+    enabled: true
+    port: 9100
+  log_level: INFO

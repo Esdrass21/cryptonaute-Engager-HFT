@@ -1,0 +1,13 @@
+# Prometheus scrape config for the Cryptonaute HFT platform.
+# The app exposes metrics on :9100 (core/metrics.py starts an http server when
+# observability.prometheus.enabled=true). Grafana reads from here.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: cryptonaute-hft
+    static_configs:
+      - targets: ["app:9100"]
+        labels:
+          service: cryptonaute-hft
