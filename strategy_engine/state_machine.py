@@ -83,6 +83,7 @@ class StrategyOrchestrator(Component):
         super().__init__(bus, cfg, clock, metrics, name="strategy.fsm")
         self._fsms: Dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", [])}
         self._pending_veto: Dict[str, dict] = {}
+        self._open_side: Dict[str, int] = {}  # symbol -> +1 long / -1 short (open position)
         self._risk_secret = cfg.secret("RISK_SIGNING_KEY", "cryptonaute-local-dev-key")
 
     def start(self) -> None:
@@ -90,8 +91,26 @@ class StrategyOrchestrator(Component):
         self.bus.subscribe(EventType.ORDER_PROPOSAL, self.on_proposal)
         self.bus.subscribe(EventType.RISK_VETO, self.on_veto)
         self.bus.subscribe(EventType.ORDER_FILL, self.on_fill)
+        self.bus.subscribe(EventType.COMPOSITE_SIGNAL, self.on_composite)
         log.info("Strategy FSM orchestrator online (symbols=%s, transitions=%s)",
                  list(self._fsms), _HAVE_TRANSITIONS)
+
+    def on_composite(self, ev: NormalizedEvent) -> None:
+        """Drive exits: if a position is open and the composite flips to the opposite
+        side, request a close (architecture §4: signal reversal exits the trade)."""
+        sym = ev.payload.get("symbol")
+        if sym is None or sym not in self._open_side:
+            return
+        side = self._open_side[sym]
+        comp = float(ev.payload.get("composite", 0.0))
+        # opposite sign with at least modest conviction
+        if side != 0 and ((side > 0 and comp < -0.15) or (side < 0 and comp > 0.15)):
+            self.emit(make_event(
+                EventType.ORDER_EXIT, "strategy.fsm",
+                payload={"symbol": sym, "reason": "composite_flip", "execute": True},
+                symbol_impact=[sym], timestamp=self.clock.now(),
+            ))
+            self.metrics.inc("exit_signal_flip")
 
     def on_proposal(self, ev: NormalizedEvent) -> None:
         sym = ev.payload["symbol"]
@@ -127,6 +146,7 @@ class StrategyOrchestrator(Component):
         if decision == "allow":
             fsm.open()
             fsm.manage()
+            self._open_side[sym] = 1 if proposal.get("direction", 1.0) > 0 else -1
             self.emit(make_event(
                 EventType.ORDER_PROPOSAL, "strategy.fsm",
                 payload={**proposal, "veto": "allow", "execute": True,
@@ -142,10 +162,15 @@ class StrategyOrchestrator(Component):
     def on_fill(self, ev: NormalizedEvent) -> None:
         sym = ev.payload.get("symbol")
         fsm = self._fsms.get(sym)
-        if fsm is None or not ev.payload.get("closed", False):
+        if fsm is None:
             return
-        fsm.close()
-        fsm.reset()
+        if ev.payload.get("closed", False):  # exit fill
+            self._open_side.pop(sym, None)
+            fsm.close()
+            fsm.reset()
+            self.metrics.inc("exit_filled")
+        else:  # entry fill — already tracked in on_veto; nothing to do here
+            pass
 
     def state_of(self, sym: str) -> str:
         fsm = self._fsms.get(sym)

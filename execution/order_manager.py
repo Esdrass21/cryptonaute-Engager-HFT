@@ -49,6 +49,7 @@ class OrderManager(Component):
             self._running = False
             return
         self.bus.subscribe(EventType.ORDER_PROPOSAL, self.on_proposal)
+        self.bus.subscribe(EventType.ORDER_EXIT, self.on_exit)
         self.bus.subscribe(EventType.TICK, self.on_tick)
         log.info("Order manager online (broker=%s adaptive_rtt=%s)", type(self.broker).__name__, self.adaptive_rtt)
 
@@ -58,6 +59,28 @@ class OrderManager(Component):
         mid = ev.payload.get("mid") or ((ev.payload.get("bid", 0) + ev.payload.get("ask", 0)) / 2)
         if mid:
             self.broker.update_price(sym, mid)
+            self._check_sl_tp(sym, mid)
+
+    def _check_sl_tp(self, sym: str, price: float) -> None:
+        """Close a position if price breaches its SL/TP (architecture §6)."""
+        pos = self._open.get(sym)
+        if not pos:
+            return
+        sl = pos.get("sl") or 0.0
+        tp = pos.get("tp") or 0.0
+        if sl and ((pos["side"] == "buy" and price <= sl) or (pos["side"] == "sell" and price >= sl)):
+            self.request_close(sym)
+        elif tp and ((pos["side"] == "buy" and price >= tp) or (pos["side"] == "sell" and price <= tp)):
+            self.request_close(sym)
+
+    # ---- strategy-driven exit ----------------------------------------
+    def on_exit(self, ev: NormalizedEvent) -> None:
+        sym = ev.payload.get("symbol")
+        if not sym or sym not in self._open:
+            return
+        # Exits reduce risk; they bypass the entry veto but the circuit breaker still
+        # governs global exposure. Close at market.
+        self.request_close(sym)
 
     # ---- execute approved proposals ----------------------------------
     def on_proposal(self, ev: NormalizedEvent) -> None:
@@ -119,7 +142,8 @@ class OrderManager(Component):
         self.metrics.set("account_drawdown_pct", state.get("drawdown_pct", 0.0))
         fill = result.get("fill_price", 0.0)
         self._open[sym] = {"ticket": result.get("ticket"), "side": side,
-                           "size": size, "entry": fill, "proposal": proposal}
+                           "size": size, "entry": fill, "proposal": proposal,
+                           "sl": proposal.get("sl", 0.0), "tp": proposal.get("tp", 0.0)}
         self.emit(make_event(EventType.ORDER_FILL, "execution.order_manager",
                              payload={"symbol": sym, "side": side, "volume": size,
                                       "price": fill, "ticket": result.get("ticket"),
@@ -129,15 +153,12 @@ class OrderManager(Component):
         self.metrics.inc("order_fill")
 
     def _position_size(self, proposal: dict) -> float:
-        # Risk-managed size (Layer 6 sets the ceiling; here we convert % -> lots).
+        # Notional exposure in account currency (symbol-agnostic). The risk layer sets the
+        # ceiling as a % of balance; we convert that directly to a dollar notional here so
+        # P&L is computed uniformly across FX / metals / crypto.
         cap_pct = float(self.cfg.get("risk.max_position_pct", 2.0))
         balance = self.broker.get_account_state().get("balance", 10_000.0)
-        notional = balance * cap_pct / 100.0
-        price = proposal.get("composite", 1.0)
-        # scale to a 0.01-lot-ish unit for FX; crypto uses USDT notional
-        if "USDT" in proposal["symbol"]:
-            return round(notional / max(price, 1.0), 4)
-        return round(notional / (max(price, 0.0001) * 100_000), 2)
+        return round(balance * cap_pct / 100.0, 2)
 
     def _slippage(self, proposal: dict, fill: float) -> float:
         # realized slippage in pct vs expected mid — cancelled if over tolerance (handled pre-send).
@@ -176,3 +197,15 @@ class OrderManager(Component):
                                           "price_entry": pos["entry"]},
                                  symbol_impact=[sym], timestamp=self.clock.now()))
             self.metrics.inc("order_fill")
+
+    def close_all(self) -> int:
+        """Close every open position (used at replay/backtest end to realize P&L)."""
+        closed = 0
+        for sym in list(self._open.keys()):
+            self.request_close(sym)
+            closed += 1
+        # refresh balance/DD metrics after the final closes
+        state = self.broker.get_account_state()
+        self.metrics.set("account_balance", state.get("balance", 0.0))
+        self.metrics.set("account_drawdown_pct", state.get("drawdown_pct", 0.0))
+        return closed

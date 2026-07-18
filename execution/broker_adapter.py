@@ -94,7 +94,9 @@ class PaperBroker(BrokerAdapter):
         slip = price * self.cfg.get("execution.slippage_tolerance_pct", 0.05) / 100.0
         fill = price - slip if pos["side"] == "buy" else price + slip
         direction = 1 if pos["side"] == "buy" else -1
-        pnl = direction * (fill - pos["open_price"]) * pos["volume"] * 100_000  # std FX lot scale
+        # volume is the notional exposure in account currency; P&L is return * notional.
+        ret = (fill - pos["open_price"]) / pos["open_price"] if pos["open_price"] else 0.0
+        pnl = direction * ret * pos["volume"]
         self.balance += pnl
         self.equity_peak = max(self.equity_peak, self.balance)
         return {"ticket": ticket, "symbol": symbol, "fill_price": fill, "pnl": pnl, "ok": True, "broker": "paper"}

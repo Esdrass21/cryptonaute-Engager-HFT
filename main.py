@@ -110,6 +110,30 @@ def cmd_validate(args) -> int:
     return 0
 
 
+def cmd_tune(args) -> int:
+    cfg = _load_cfg(args.config)
+    events = load_jsonl(args.tune)
+    from validation.tuning import tune, best_passing, write_tuned_config
+
+    results = tune(events, cfg, trials=args.trials, min_trades=args.min_trades, max_dd_pct=args.max_dd)
+    best = best_passing(results)
+    print(f"\nTuned {len(results)} trials against {len(events)} events.")
+    print(f"{'rank':>4} {'tech':>5} {'news':>5} {'macro':>5} {'reg':>4} {'thr':>4} {'evMin':>5} "
+          f"{'net':>10} {'trades':>6} {'dd%':>6} {'PASS':>4}")
+    for i, r in enumerate(results[:12], 1):
+        print(f"{i:>4} {r.params['tech']:>5} {r.params['news']:>5} {r.params['macro']:>5} "
+              f"{r.params['regime']:>4} {r.params['threshold']:>4} {r.params['ev_min']:>5} "
+              f"{r.net_pnl:>10.2f} {r.trades:>6} {r.max_dd_pct:>6.2f} {str(r.passed):>4}")
+    if best:
+        out = write_tuned_config(best, args.out)
+        print(f"\nBEST PASSING: net={best.net_pnl:.2f} trades={best.trades} dd={best.max_dd_pct:.2f}%")
+        print(f"Wrote tuned config -> {out}")
+    else:
+        print("\nNo trial cleared the gate (positive expectancy + DD within limit + min trades).")
+        print("Consider richer/trending history, enabling order-flow, or widening the grid.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="cryptonaute", description="Cryptonaute HFT Quant Platform")
     ap.add_argument("--config", default=None)
@@ -119,6 +143,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--generate", metavar="OUT", default=None, help="Generate sample history JSONL")
     ap.add_argument("--gen-steps", dest="gen_steps", type=int, default=3000)
     ap.add_argument("--validate", metavar="HISTORY", default=None, help="Validate a recorded history file")
+    ap.add_argument("--tune", metavar="HISTORY", default=None, help="Grid-search fusion params vs replay")
+    ap.add_argument("--trials", type=int, default=None, help="Max tuning trials (random subsample)")
+    ap.add_argument("--min-trades", dest="min_trades", type=int, default=5)
+    ap.add_argument("--max-dd", dest="max_dd", type=float, default=2.0)
+    ap.add_argument("--out", default="config/tuned.yaml", help="Where to write best tuned config")
     return ap
 
 
@@ -129,6 +158,8 @@ def main(argv: list | None = None) -> int:
         return cmd_generate(args)
     if args.validate:
         return cmd_validate(args)
+    if args.tune:
+        return cmd_tune(args)
     return cmd_run(args)
 
 

@@ -41,6 +41,7 @@ class EventType(str, Enum):
     ORDER_FILL = "order_fill"
     ORDER_REJECT = "order_reject"
     ORDER_CANCEL = "order_cancel"
+    ORDER_EXIT = "order_exit"              # strategy-driven close of an open position
     # Layer 6 — risk
     RISK_VETO = "risk_veto"             # signed allow/deny
     RISK_BREACH = "risk_breach"         # circuit-breaker trip

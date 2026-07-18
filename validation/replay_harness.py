@@ -86,7 +86,12 @@ class ReplayHarness:
 
     def run(self) -> int:
         self.queue()
-        return self.bus.run_replay()
+        n = self.bus.run_replay()
+        # Realize P&L: close any positions still open at the end of the recording so the
+        # validation harness can score net expectancy (architecture §8: compare expected
+        # vs actual). A live run would instead rely on signal-driven exits / SL-TP.
+        self.execution.close_all()
+        return n
 
     def step(self) -> None:
         self.bus.step_replay()
