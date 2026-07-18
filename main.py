@@ -42,11 +42,21 @@ from validation.replay_harness import ReplayHarness
 log = logging.getLogger("main")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config" / "default.yaml"
+TUNED_CONFIG = Path(__file__).resolve().parent / "config" / "tuned.yaml"
 
 
 def _load_cfg(path: str | None) -> Config:
+    """Load config, auto-merging a gate-passing tuned config when present.
+
+    Precedence: explicit ``--config`` > auto-loaded ``config/tuned.yaml`` (the
+    calibration produced by ``--tune``, architecture §7.3) > ``config/default.yaml``.
+    This closes the loop: a tuned, validated strategy deploys automatically unless a
+    config is explicitly chosen.
+    """
     if path and Path(path).exists():
-        return Config.load(path)
+        return Config.load(str(DEFAULT_CONFIG), path)
+    if TUNED_CONFIG.exists():
+        return Config.load(str(DEFAULT_CONFIG), str(TUNED_CONFIG))
     if DEFAULT_CONFIG.exists():
         return Config.load(str(DEFAULT_CONFIG))
     return Config.load()
@@ -75,18 +85,21 @@ def cmd_generate(args) -> int:
 def cmd_validate(args) -> int:
     cfg = _load_cfg(args.config)
     events = load_jsonl(args.validate)
-    # 1) Replay harness through the REAL pipeline (paper broker).
+    # 1) Replay harness through the REAL pipeline (paper broker). This is the authoritative
+    #    expectancy/Drawdown measurement — the strategy actually trades the history.
     harness = ReplayHarness(cfg, events)
     harness.run()
     state = harness.account_state()
+    net = state["balance"] - cfg.get("validation.backtest.initial_capital", 10000.0)
+    dd = state.get("drawdown_pct", 0.0)
     print("\n[1/3] Replay through real pipeline (paper broker):")
-    print(f"      final balance = {state['balance']:.2f}  "
-          f"drawdown = {state['drawdown_pct']:.2f}%  "
+    print(f"      net P&L = {net:+.2f}  drawdown = {dd:.2f}%  "
           f"open positions = {len(harness.open_positions())}")
 
-    # 2) Vectorized backtest on close prices of the first symbol.
+    # 2) Vectorized backtest on close prices of the first symbol (reference sanity check).
     sym = cfg.get("symbols", ["EURUSD"])[0]
     closes = [e.payload["close"] for e in events if e.type == "candle" and e.payload.get("symbol") == sym]
+    gate_pass = False
     if closes:
         import numpy as np
 
@@ -97,7 +110,7 @@ def cmd_validate(args) -> int:
         bt = vectorized_backtest(arr, signal, initial_capital=float(cfg.get("validation.backtest.initial_capital", 10000.0)))
         wf = walk_forward(arr, lambda tr, te: np.sign(te[1:] - te[:-1]) * 0.5)
         mc = monte_carlo(bt.trades, n_paths=int(cfg.get("validation.monte_carlo.n_paths", 1000)))
-        print("\n[2/3] Vectorized backtest:")
+        print("\n[2/3] Vectorized backtest (reference):")
         for k, v in bt.summary().items():
             print(f"      {k:18s}: {v}")
         print("\n[3/3] Monte Carlo (tail risk):")
@@ -105,10 +118,19 @@ def cmd_validate(args) -> int:
             print(f"      {k:18s}: {round(v, 2)}")
         avg_wr = sum(r.win_rate for r in wf) / len(wf) if wf else 0.0
         print(f"\n      walk_forward folds = {len(wf)}  avg OOS win_rate = {avg_wr:.3f}")
-        print("\nVALIDATION GATE (architecture §7.3): require positive expectancy + acceptable DD before live.")
+
+        # Architecture §7.3 gate: positive expectancy + acceptable drawdown before live.
+        max_dd = float(cfg.get("risk.max_daily_drawdown_pct", 2.0))
+        gate_pass = (net > 0.0) and (dd <= max_dd)
+        verdict = "PASS" if gate_pass else "FAIL"
+        print(f"\nVALIDATION GATE (architecture §7.3): require positive expectancy + acceptable DD "
+              f"before live.")
+        print(f"  net expectancy = {net:+.2f}  (need > 0)")
+        print(f"  max drawdown  = {dd:.2f}%  (limit {max_dd:.2f}%)")
+        print(f"  RESULT: {verdict}")
     else:
         print("No candles found in recorded history for backtest.")
-    return 0
+    return 0 if gate_pass else 1
 
 
 def cmd_tune(args) -> int:

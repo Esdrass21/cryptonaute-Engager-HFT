@@ -77,3 +77,58 @@ def test_tuning_gate_passes_on_trended_history(tmp_path):
     assert passing.net_pnl > 0.0
     assert passing.trades >= 3
     assert passing.max_dd_pct <= 5.0
+
+
+def test_tuned_config_closes_deploy_loop(tmp_path):
+    """config/tuned.yaml (written by --tune) must be auto-loaded by the CLI config loader.
+
+    This is the closure of the deployment loop: --generate --trendy -> --tune ->
+    config/tuned.yaml -> --validate / --paper actually USE it. If _load_cfg ignored the
+    tuned file, a validated, gate-passing strategy would never deploy.
+    """
+    import yaml as _yaml
+
+    from main import TUNED_CONFIG, _load_cfg
+
+    tuned = tmp_path / "tuned.yaml"
+    _yaml.safe_dump({
+        "strategy": {"composite": {"threshold": 0.42}, "exit_flip_conviction": 0.13},
+        "risk": {"max_daily_drawdown_pct": 3.0},
+    }, tuned.open("w"))
+
+    import main
+    orig = main.TUNED_CONFIG
+    try:
+        main.TUNED_CONFIG = tuned
+        cfg = _load_cfg(None)
+        assert cfg.get("strategy.composite.threshold") == 0.42, cfg.get("strategy.composite.threshold")
+        assert cfg.get("strategy.exit_flip_conviction") == 0.13
+        assert cfg.get("risk.max_daily_drawdown_pct") == 3.0
+    finally:
+        main.TUNED_CONFIG = orig
+
+
+def test_validate_gate_verdict_logic():
+    """The gate verdict derives from realized net P&L and drawdown, and FAILs on noise.
+
+    Exercises the exact predicate used by cmd_validate: positive net expectancy AND
+    drawdown within the configured limit => PASS. Pure-GBM history must not pass.
+    """
+    cfg = Config.load()
+    cfg.set("data.market.sim.trend_strength", 0.0)  # pure noise, no edge
+
+    from data_ingestion.generate_sample import generate
+    from validation.replay_harness import ReplayHarness
+
+    events = generate(cfg, steps=2000, seed=5, trend_strength=0.0)
+    h = ReplayHarness(cfg, events)
+    h.run()
+    state = h.account_state()
+    cap = cfg.get("validation.backtest.initial_capital", 10000.0)
+    net = state["balance"] - cap
+    dd = state.get("drawdown_pct", 0.0)
+    max_dd = float(cfg.get("risk.max_daily_drawdown_pct", 2.0))
+
+    gate_pass = (net > 0.0) and (dd <= max_dd)
+    # noise has no real edge -> gate must reject
+    assert not gate_pass, f"noise unexpectedly passed the gate (net={net}, dd={dd})"
