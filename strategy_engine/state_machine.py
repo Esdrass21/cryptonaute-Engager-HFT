@@ -81,9 +81,13 @@ class StrategyOrchestrator(Component):
 
     def __init__(self, bus, cfg, clock, metrics):
         super().__init__(bus, cfg, clock, metrics, name="strategy.fsm")
-        self._fsms: Dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", [])}
+        self._fsms: Dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", ["EURUSD"])}
+        self.threshold = float(cfg.get("strategy.fusion.threshold", 0.55))
+        # conviction (|composite|) at which a signal-reversal closes an open trade.
+        # Lower = exits on mild pullbacks (whipsaw-prone); higher = rides trends. Tunable.
+        self.exit_flip = float(cfg.get("strategy.exit_flip_conviction", 0.15))
+        self._open_side: Dict[str, int] = {}
         self._pending_veto: Dict[str, dict] = {}
-        self._open_side: Dict[str, int] = {}  # symbol -> +1 long / -1 short (open position)
         self._risk_secret = cfg.secret("RISK_SIGNING_KEY", "cryptonaute-local-dev-key")
 
     def start(self) -> None:
@@ -103,8 +107,9 @@ class StrategyOrchestrator(Component):
             return
         side = self._open_side[sym]
         comp = float(ev.payload.get("composite", 0.0))
-        # opposite sign with at least modest conviction
-        if side != 0 and ((side > 0 and comp < -0.15) or (side < 0 and comp > 0.15)):
+        # opposite sign with at least modest conviction (configurable; rides trends when high)
+        if side != 0 and ((side > 0 and comp < -self.exit_flip) or
+                          (side < 0 and comp > self.exit_flip)):
             self.emit(make_event(
                 EventType.ORDER_EXIT, "strategy.fsm",
                 payload={"symbol": sym, "reason": "composite_flip", "execute": True},
@@ -117,10 +122,17 @@ class StrategyOrchestrator(Component):
         fsm = self._fsms.get(sym)
         if fsm is None:
             return
+        # Ignore our own forwarded execution orders (execute=True) — those are handled by
+        # the execution layer, not re-fed into the FSM.
+        if ev.payload.get("execute"):
+            return
         if not ev.payload.get("passes_ev", False):
             return
-        # Only act on a fresh signal when no position is open for this symbol.
-        if fsm.state != "idle":
+        # Edge-triggered: only arm the machine from idle, and never while a veto is already
+        # pending for this symbol. SignalFusion emits a proposal on EVERY hot-composite tick,
+        # so without this guard we'd re-arm / re-submit to the veto every tick (a re-entrancy
+        # storm that wedges the FSM in `confirmed` and prevents clean entries/exits).
+        if fsm.state != "idle" or sym in self._pending_veto:
             return
         fsm.detect()
         fsm.confirm()

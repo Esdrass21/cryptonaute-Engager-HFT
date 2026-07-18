@@ -86,7 +86,39 @@ Before any strategy goes live it must pass, **in order**:
 
 The `cryptonaute --validate` command runs 1–3 and prints the gate verdict.
 
----
+### Proving the gate can go GREEN (`cryptonaute --tune`)
+
+The default sim feed is pure GBM (no exploitable edge) so the gate correctly stays red on
+default history. To exercise the full deploy path, generate **trended** history with a real,
+persistent edge and let the tuning harness search for a passing configuration:
+
+```bash
+# inject persistent, detectable trends (fair microstructure; no oracle)
+cryptonaute --generate data/trend.jsonl --gen-steps 3000 --trendy 0.0015 --reversion 0.004
+# grid-search fusion weights / threshold / EV-min / exit-flip vs the REAL replay pipeline
+cryptonaute --tune data/trend.jsonl --trials 24 --min-trades 5 --max-dd 5
+# -> writes config/tuned.yaml with the best passing config (positive expectancy + DD within limit)
+```
+
+The tuning harness runs every candidate through the **actual** 6-layer pipeline (not a
+reimplementation) and reports net P&L, trade count, and drawdown, so a green result means the
+machine genuinely discovered a tradeable configuration. Example passing run:
+
+```
+rank  tech  news macro  reg  thr evMin       net trades    dd% PASS
+   1   0.8   0.4  0.15  0.1 0.65  0.02    150.17     44   0.00 True
+BEST PASSING: net=150.17 trades=44 dd=0.00%
+Wrote tuned config -> config/tuned.yaml
+```
+
+### History generator notes
+
+`data_ingestion.generate_sample` records **only raw inputs** (ticks, candles, order book, news)
+— never the pipeline's own decision outputs. The replay harness re-derives composites,
+proposals, vetoes, and fills from those raw inputs, so a recording replays cleanly without
+double-feeding the strategy. The sim price follows an Ornstein-Uhlenbeck process anchored to a
+slowly-drifting regime, so trends are persistent (capturable by MA-cross / z-score) but prices
+stay stationary (no explosion).
 
 ## Configuration
 

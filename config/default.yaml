@@ -58,6 +58,7 @@ strategy:
     macro_weight: 0.15
     regime_weight: 0.10
     of_weight: 0.05
+  exit_flip_conviction: 0.15
   ev:
     min_expected_value: 0.0
     calibrated: false          # MUST be true before live (§7.3 gate)

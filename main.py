@@ -65,7 +65,8 @@ def cmd_run(args) -> int:
 
 def cmd_generate(args) -> int:
     cfg = _load_cfg(args.config)
-    events = generate(cfg, args.gen_steps)
+    events = generate(cfg, args.gen_steps, seed=args.seed, trend_strength=args.trendy,
+                     mean_reversion=args.reversion)
     n = write_jsonl(events, args.generate)
     log.info("Generated %d events -> %s", n, args.generate)
     return 0
@@ -142,6 +143,11 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--steps", type=int, default=None, help="Bound run length (tests/quick runs)")
     ap.add_argument("--generate", metavar="OUT", default=None, help="Generate sample history JSONL")
     ap.add_argument("--gen-steps", dest="gen_steps", type=int, default=3000)
+    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--trendy", dest="trendy", type=float, default=0.0,
+                    help="Inject persistent trends into generated history (e.g. 0.003)")
+    ap.add_argument("--reversion", dest="reversion", type=float, default=0.01,
+                    help="OU mean-reversion speed (lower = stronger, more persistent trends)")
     ap.add_argument("--validate", metavar="HISTORY", default=None, help="Validate a recorded history file")
     ap.add_argument("--tune", metavar="HISTORY", default=None, help="Grid-search fusion params vs replay")
     ap.add_argument("--trials", type=int, default=None, help="Max tuning trials (random subsample)")

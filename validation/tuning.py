@@ -50,7 +50,9 @@ class TrialResult:
     score: float
 
 
-# Parameter grid: relative fusion weights + composite threshold + EV min expectancy.
+# Parameter grid: relative fusion weights + composite threshold + EV min expectancy +
+# exit-flip conviction (how strongly a signal reversal must oppose an open trade to close it;
+# high = ride trends, low = exit on mild pullbacks / whipsaw).
 # (Weights are normalized at scoring time, so absolute scale does not matter.)
 _GRID = {
     "tech": [0.50, 0.65, 0.80],
@@ -59,6 +61,7 @@ _GRID = {
     "regime": [0.00, 0.10, 0.20],
     "threshold": [0.45, 0.55, 0.65],
     "ev_min": [0.0, 0.02, 0.05],
+    "exit_flip": [0.10, 0.25, 0.40],
 }
 
 
@@ -80,6 +83,7 @@ def _run_trial(base_cfg: Config, events, params: Dict[str, float],
     cfg.set("strategy.composite.regime_weight", norm["regime"])
     cfg.set("strategy.composite.threshold", params["threshold"])
     cfg.set("strategy.ev.min_expectancy", params["ev_min"])
+    cfg.set("strategy.exit_flip_conviction", params["exit_flip"])
 
     harness = ReplayHarness(cfg, events)
     harness.run()
@@ -142,6 +146,7 @@ def write_tuned_config(result: TrialResult, out: str = "config/tuned.yaml") -> s
                 "threshold": result.params["threshold"],
             },
             "ev": {"min_expectancy": result.params["ev_min"]},
+            "exit_flip_conviction": result.params["exit_flip"],
         }
     }
     path = Path(out)

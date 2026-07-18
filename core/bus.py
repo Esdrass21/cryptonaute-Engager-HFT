@@ -105,7 +105,13 @@ class MessageBus:
     # ------------------------------------------------------------------ #
     def publish(self, event: NormalizedEvent) -> None:
         if self.replay:
-            self._replay_queue.append(event)
+            # In replay mode, a handler's emitted event is a *reaction* to the event
+            # currently being dispatched. It must be processed BEFORE the next raw
+            # (recorded) event, or the whole decision cascade (proposal -> veto -> fill)
+            # would be deferred until every recorded event has been replayed. So we
+            # push reactions to the FRONT of the queue (LIFO) so they resolve immediately
+            # while raw inputs keep their original insertion order.
+            self._replay_queue.appendleft(event)
             return
         if self.backend == "redis" and self._redis is not None:
             try:  # pragma: no cover - optional backend

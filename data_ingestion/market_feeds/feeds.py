@@ -50,10 +50,16 @@ class SimMarketFeed(MarketFeed):
         self.seed = seed
         self.interval = float(cfg.get("data.market.sim.interval_s", 1.0))
         self.candles_per_tick = int(cfg.get("data.market.sim.candles_per_tick", 5))
+        self.trend_strength = float(cfg.get("data.market.sim.trend_strength", 0.0))
+        self.mean_reversion = float(cfg.get("data.market.sim.mean_reversion", 0.01))
         self._rng = random.Random(seed)
         self._prices: Dict[str, float] = {}
         self._base_vol: Dict[str, float] = {}
         self._candle_state: Dict[str, Dict[str, float]] = {}
+        # persistent trend regime per symbol (fair microstructure: trends exist & persist)
+        self._trend: Dict[str, float] = {}
+        self._trend_life: Dict[str, int] = {}
+        self._anchor: Dict[str, float] = {}  # OU anchor (slowly drifting) per symbol
         self._tick_count = 0
         self._seq = 0
         self._init_prices()
@@ -69,11 +75,39 @@ class SimMarketFeed(MarketFeed):
             self._prices[sym] = p
             self._base_vol[sym] = v
             self._candle_state[sym] = {"open": p, "high": p, "low": p, "close": p, "volume": 0.0}
+            # OU anchor: price reverts to a slowly-moving anchor, so trends persist locally
+            # (capturable by MA-cross / z-score) but prices stay stationary (no explosion).
+            self._anchor[sym] = p
+            self._trend[sym] = 0.0
+            self._trend_life[sym] = 0
+
+    def _refresh_trend(self, sym: str) -> None:
+        """Occasionally pick a new anchor drift that persists for many steps.
+
+        Pure GBM (trend_strength == 0) has no edge; a nonzero strength injects realistic,
+        persistent trends the momentum / z-score indicators can actually detect. Deterministic
+        via the seeded RNG, so replays stay reproducible.
+        """
+        if self._trend_life[sym] > 0:
+            self._trend_life[sym] -= 1
+            return
+        # new regime: drift in [-strength, +strength], persists 40-150 steps (frequent
+        # enough reversals that a trend-follower gets many round-trip opportunities).
+        self._trend[sym] = self._rng.uniform(-self.trend_strength, self.trend_strength)
+        self._trend_life[sym] = self._rng.randint(40, 150)
 
     def _sim_tick(self, sym: str) -> float:
         v = self._base_vol[sym]
+        self._refresh_trend(sym)
+        drift = self._trend[sym]
+        # anchor drifts by the persistent regime; price reverts to anchor (OU dynamics)
+        kappa = self.mean_reversion  # mean-reversion speed — keeps trends local & prices bounded
+        log_p = math.log(self._prices[sym])
+        log_a = math.log(self._anchor[sym])
         shock = self._rng.gauss(0.0, v)
-        p = self._prices[sym] * math.exp(shock)
+        new_log = log_p + kappa * (log_a - log_p) + drift + shock
+        self._anchor[sym] = math.exp(log_a + drift)  # anchor follows the regime drift
+        p = math.exp(new_log)
         self._prices[sym] = max(p, 1e-6)
         return self._prices[sym]
 

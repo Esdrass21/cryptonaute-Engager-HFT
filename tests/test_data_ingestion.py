@@ -36,15 +36,27 @@ def test_bus_pubsub_order():
     assert seen == [0, 1, 2, 3, 4]
 
 
-def test_bus_replay_mode():
+def test_bus_replay_reaction_resolves_before_next_raw():
+    """A handler's emitted event must be processed before the next raw (recorded) event.
+
+    This is what lets the full decision cascade (proposal -> veto -> fill) complete within
+    the same replay step instead of being deferred to the end of the recording.
+    """
     bus = MessageBus(replay=True)
     seen = []
-    bus.subscribe(EventType.CANDLE, lambda e: seen.append(e.payload["v"]))
+    bus.subscribe(EventType.CANDLE, lambda e: (
+        seen.append(("raw", e.payload["v"])),
+        bus.publish(make_event(EventType.TECH_SIGNAL, "derived", {"v": e.payload["v"]})),
+    ))
+    bus.subscribe(EventType.TECH_SIGNAL, lambda e: seen.append(("derived", e.payload["v"])))
     for v in range(3):
-        bus.publish(make_event(EventType.CANDLE, "t", {"v": v}))
-    assert seen == [], "replay mode must NOT dispatch on publish"
-    assert bus.run_replay() == 3
-    assert seen == [0, 1, 2]
+        bus.enqueue(make_event(EventType.CANDLE, "t", {"v": v}))
+    bus.run_replay()
+    assert seen == [
+        ("raw", 0), ("derived", 0),
+        ("raw", 1), ("derived", 1),
+        ("raw", 2), ("derived", 2),
+    ]
 
 
 def test_normalizer_shapes():

@@ -1,0 +1,15 @@
+{
+  "strategy": {
+    "composite": {
+      "tech_weight": 0.4643,
+      "news_weight": 0.2857,
+      "macro_weight": 0.1786,
+      "regime_weight": 0.0714,
+      "threshold": 0.45
+    },
+    "ev": {
+      "min_expectancy": 0.05
+    },
+    "exit_flip_conviction": 0.1
+  }
+}
