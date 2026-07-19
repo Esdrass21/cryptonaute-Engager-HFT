@@ -116,8 +116,19 @@ def test_ev_engine_gates_on_min_ev():
         "symbol": "EURUSD", "composite": 0.9, "confidence": 0.9, "above_threshold": True},
         symbol_impact=["EURUSD"], timestamp=0.0))
     assert out, "no order proposal"
-    # with no calibration data, prior EV ~ 0, so passes_ev depends on min_ev (0.0 default)
     assert "ev" in out[0].payload and "passes_ev" in out[0].payload
+
+
+def test_ev_engine_rejects_weak_confidence_signals():
+    cfg = Config.load()
+    ev = ExpectedValueEngine(MessageBus(), cfg, Clock(), Metrics())
+    ev.start()
+    out = []
+    ev.bus.subscribe(EventType.ORDER_PROPOSAL, lambda e: out.append(e))
+    ev.on_composite(make_event(EventType.COMPOSITE_SIGNAL, "fusion", {
+        "symbol": "EURUSD", "composite": 0.6, "confidence": 0.4, "above_threshold": True},
+        symbol_impact=["EURUSD"], timestamp=0.0))
+    assert out == [], "weak-confidence signals should not emit order proposals"
 
 
 def test_fsm_transitions():
@@ -182,7 +193,9 @@ def test_risk_veto_signs_and_blocks():
         "symbol": "EURUSD", "position_pct": 99.0, "passes_ev": True},
         symbol_impact=["EURUSD"], timestamp=0.0))
     assert out and out[0].payload["decision"] == "deny"
-    assert len(out[0].payload["signature"]) == 16
+    assert isinstance(out[0].payload["signature"], dict)
+    assert "key_id" in out[0].payload["signature"]
+    assert "digest_b64" in out[0].payload["signature"]
 
 
 def test_circuit_breaker_trips():

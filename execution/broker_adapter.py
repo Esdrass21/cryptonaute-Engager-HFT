@@ -22,6 +22,10 @@ from core.component import Component
 from core.config import Clock, Config
 from core.events import EventType, make_event, NormalizedEvent
 from core.metrics import Metrics
+from execution.book import (
+    OrderBook, synthesize_book, walk_book,
+    RestingOrder, FillEvent,
+)
 
 log = logging.getLogger("execution.broker")
 
@@ -49,22 +53,60 @@ class BrokerAdapter(ABC):
 
 
 class PaperBroker(BrokerAdapter):
-    """Zero-dependency simulated broker. Fills at mid +/- a small modeled slippage.
+    """
+    Zero-dependency simulated broker with a book-aware fill model.
 
-    Used for paper trading and the validation harness. Tracks a single account balance and
-    open positions so the risk layer and EV calibration read realistic state.
+    Phase 4 changes
+    ---------------
+    * Fills cross a synthetic order book (`synthesize_book`), so large orders pay
+      slippage that scales with size, and orders larger than top-of-book depth
+      partially fill.
+    * Commission is charged on open and close (`execution.commission_bps`).
+    * SL/TP is NOT handled here. `OrderManager` owns the trigger; the broker just
+      reports fills. (The old broker silently closed positions without emitting a
+      fill event, desynchronising the FSM's `_open_side` from `_positions`.)
+
+    Semantics kept from before
+    --------------------------
+    * `volume` on `send_market_order` is **notional in account currency** — the
+      same units `OrderManager._position_size` produces. Conversion to base units
+      happens inside `walk_book`.
+    * `get_account_state()` returns `{"balance", "equity_peak", "drawdown_pct"}`.
     """
 
-    def __init__(self, cfg: Config, clock: Clock, starting_balance: float = 10_000.0):
+    def __init__(
+        self,
+        cfg: Config,
+        clock: Clock,
+        starting_balance: float = 10_000.0,
+    ) -> None:
         super().__init__(cfg)
         self.clock = clock
         self.balance = starting_balance
         self.equity_peak = starting_balance
+
         self._positions: Dict[str, dict] = {}
         self._tickets = 0
         self._last_price: Dict[str, float] = {}
+        self._books: Dict[str, OrderBook] = {}
 
-    # ---- interface ----------------------------------------------------
+        # Book synthesis config (with safe defaults).
+        self._n_levels = int(cfg.get("execution.book.n_levels", 5))
+        self._tick_bps = float(cfg.get("execution.book.tick_size_bps", 1.0))
+        self._top_notional = float(cfg.get("execution.book.top_size_notional", 50_000.0))
+        self._depth_growth = float(cfg.get("execution.book.depth_growth", 1.6))
+        self._size_jitter = float(cfg.get("execution.book.size_jitter", 0.25))
+        self._commission_bps = float(cfg.get("execution.commission_bps", 0.0))
+
+        # Phase 4.5 — limit orders + queue model
+        self._resting: Dict[str, RestingOrder] = {}
+        self._pending_fills: List[FillEvent] = []
+        self._flow_multiplier = float(cfg.get("execution.queue_flow_multiplier", 5.0))
+        self._erosion_rate = float(cfg.get("execution.queue_erosion_rate", 0.05))
+        self._erosion_ticks = int(cfg.get("execution.queue_erosion_ticks", 2))
+        self._order_seq = 0
+
+    # ---- interface ---------------------------------------------------- #
     def connect(self) -> bool:
         return True
 
@@ -72,51 +114,352 @@ class PaperBroker(BrokerAdapter):
         self._tickets += 1
         return self._tickets
 
-    def send_market_order(self, symbol: str, side: str, volume: float, sl: float = 0.0, tp: float = 0.0) -> dict:
-        price = self._last_price.get(symbol, 1.0)
-        # model slippage as a small adverse move
-        slip = price * self.cfg.get("execution.slippage_tolerance_pct", 0.05) / 100.0
-        fill = price + slip if side == "buy" else price - slip
+    def _book(self, symbol: str) -> OrderBook:
+        """Return the current book. Uses an explicit feed if present, else synthesizes."""
+        book = self._books.get(symbol)
+        if book is not None:
+            return book
+        mid = self._last_price.get(symbol, 0.0)
+        book = synthesize_book(
+            symbol, mid,
+            ts=self.clock.now(),
+            n_levels=self._n_levels,
+            tick_size_bps=self._tick_bps,
+            top_size_notional=self._top_notional,
+            depth_growth=self._depth_growth,
+            size_jitter=self._size_jitter,
+        )
+        self._books[symbol] = book
+        return book
+
+    # ---- price / book feed -------------------------------------------- #
+    def update_price(self, symbol: str, mid: float) -> None:
+        """
+        Advance the market. Synthesizes a fresh book, then processes any
+        resting limit orders against the implied trade volume. No SL/TP here
+        — see OrderManager.
+        """
+        prev = self._last_price.get(symbol, mid)
+        self._last_price[symbol] = mid
+        self._books.pop(symbol, None)       # force re-synthesis from new mid
+        if self._resting:
+            self._process_resting_orders(symbol, prev, mid)
+
+    def update_book(
+        self,
+        symbol: str,
+        bids: list[tuple[float, float]],
+        asks: list[tuple[float, float]],
+    ) -> None:
+        """Install an explicit book (used when a feed provides depth)."""
+        book = OrderBook.from_levels(bids, asks)
+        self._books[symbol] = book
+        self._last_price[symbol] = book.mid()
+
+    # ------------------------------------------------------------------ #
+    # Phase 4.5 — limit orders + queue position                           #
+    # ------------------------------------------------------------------ #
+
+    def _next_order_id(self) -> str:
+        self._order_seq += 1
+        return f"L{self._order_seq:08d}"
+
+    def send_limit_order(
+        self,
+        symbol: str,
+        side: str,
+        limit_price: float,
+        notional: float,
+        ttl_s: float = 0.0,
+        sl: float = 0.0,
+        tp: float = 0.0,
+    ) -> dict:
+        """Place a limit order. Crossing → taker; non-crossing → resting FIFO."""
+        book = self._book(symbol)
+        best_bid, best_ask = book.best_bid(), book.best_ask()
+        if best_bid <= 0 or best_ask <= 0:
+            return {"ok": False, "reason": "no-price", "broker": "paper"}
+
+        side = side.lower()
+        crossing = (side == "buy" and limit_price >= best_ask) or \
+                   (side == "sell" and limit_price <= best_bid)
+
+        if crossing:
+            res = self.send_market_order(symbol, side, notional, sl=sl, tp=tp)
+            if res.get("ok"):
+                res["order_type"] = "limit"
+                res["crossed"] = True
+                res["limit_price"] = float(limit_price)
+            return res
+
+        order_id = self._next_order_id()
+        queue_ahead = self._queue_depth_at(book, side, limit_price)
+        order = RestingOrder(
+            order_id=order_id, symbol=symbol, side=side,
+            limit_price=float(limit_price), notional=float(notional),
+            placed_ts=self.clock.now(), ttl_s=float(ttl_s),
+            queue_ahead=queue_ahead,
+        )
+        self._resting[order_id] = order
+        return {
+            "ok": True, "broker": "paper", "order_type": "limit",
+            "order_id": order_id, "symbol": symbol, "side": side,
+            "limit_price": float(limit_price),
+            "notional": float(notional),
+            "queue_ahead": queue_ahead,
+            "state": "resting",
+        }
+
+    def cancel_order(self, order_id: str) -> dict:
+        o = self._resting.get(order_id)
+        if o is None:
+            return {"ok": False, "reason": "unknown-order"}
+        if not o.is_open:
+            return {"ok": False, "reason": f"order-{o.state}"}
+        o.state = "cancelled"
+        return {"ok": True, "order_id": order_id, "state": "cancelled",
+                "filled_notional": o.filled_notional}
+
+    def replace_order(
+        self,
+        order_id: str,
+        new_limit_price: float,
+        new_notional: float | None = None,
+        new_ttl_s: float | None = None,
+    ) -> dict:
+        """Cancel-and-replace. Re-queues behind current depth at new price."""
+        o = self._resting.get(order_id)
+        if o is None:
+            return {"ok": False, "reason": "unknown-order"}
+        if not o.is_open:
+            return {"ok": False, "reason": f"order-{o.state}"}
+        symbol, side = o.symbol, o.side
+        notional = float(new_notional) if new_notional is not None else o.remaining_notional
+        ttl = float(new_ttl_s) if new_ttl_s is not None else max(0.0, o.ttl_s - (self.clock.now() - o.placed_ts))
+        o.state = "cancelled"
+        return self.send_limit_order(symbol, side, float(new_limit_price), notional, ttl_s=ttl)
+
+    def drain_fills(self) -> List[FillEvent]:
+        """Return and clear pending fill events."""
+        out = self._pending_fills
+        self._pending_fills = []
+        return out
+
+    def get_resting_order(self, order_id: str) -> Optional[RestingOrder]:
+        return self._resting.get(order_id)
+
+    def get_resting_orders(self, symbol: Optional[str] = None) -> List[RestingOrder]:
+        orders = [o for o in self._resting.values() if o.is_open]
+        if symbol is not None:
+            orders = [o for o in orders if o.symbol == symbol]
+        return orders
+
+    # ------------------------------------------------------------------ #
+    # Fill engine (called from update_price)                              #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _queue_depth_at(book: OrderBook, side: str, limit_price: float) -> float:
+        if side == "buy":
+            levels = [l for l in book.bids if l.price >= limit_price]
+        else:
+            levels = [l for l in book.asks if l.price <= limit_price]
+        return sum(l.notional for l in levels)
+
+    def _synthesize_trade_volume(self, prev_mid: float, new_mid: float) -> float:
+        """Trade volume implied by a mid move. Deterministic."""
+        if prev_mid <= 0 or new_mid <= 0:
+            return 0.0
+        ret = abs(new_mid - prev_mid) / prev_mid
+        return ret * self._flow_multiplier * self._top_notional
+
+    def _process_resting_orders(self, symbol: str, prev_mid: float, new_mid: float) -> None:
+        now = self.clock.now()
+        volume = self._synthesize_trade_volume(prev_mid, new_mid)
+        rising = new_mid > prev_mid
+
+        for order in self._resting.values():
+            if order.symbol != symbol or not order.is_open:
+                continue
+
+            # --- TTL ---
+            if order.ttl_s > 0 and (now - order.placed_ts) >= order.ttl_s:
+                order.state = "expired"
+                continue
+
+            # --- queue erosion ---
+            if self._erosion_rate > 0:
+                tick = (new_mid * self._tick_bps / 10_000.0) or 1e-9
+                dist_ticks = abs(new_mid - order.limit_price) / tick
+                if dist_ticks <= self._erosion_ticks:
+                    order.queue_ahead *= (1.0 - self._erosion_rate)
+
+            # --- fill evaluation ---
+            crossed_notional = self._crossed_notional(order, prev_mid, new_mid, volume, rising)
+            if crossed_notional <= 0:
+                continue
+
+            # FIFO: consume queue first.
+            consumed = min(crossed_notional, order.queue_ahead)
+            order.queue_ahead -= consumed
+            residual = crossed_notional - consumed
+            if residual <= 0:
+                continue
+
+            fill_notional = min(residual, order.remaining_notional)
+            if fill_notional <= 0:
+                continue
+
+            fill_price = order.limit_price
+            commission = fill_notional * self._commission_bps / 10_000.0
+            self.balance -= commission
+
+            order.filled_notional += fill_notional
+            order.last_fill_ts = now
+            order.fills.append((now, fill_notional, fill_price))
+            fully = order.filled_notional >= order.notional - 1e-9
+            if fully:
+                order.state = "filled"
+
+            self._pending_fills.append(FillEvent(
+                order_id=order.order_id, symbol=symbol, side=order.side,
+                notional=fill_notional, price=fill_price, ts=now,
+                fully_filled=fully,
+                remaining_notional=order.remaining_notional,
+                commission=commission,
+            ))
+
+    @staticmethod
+    def _crossed_notional(
+        order: RestingOrder, prev_mid: float, new_mid: float,
+        total_volume: float, rising: bool,
+    ) -> float:
+        if total_volume <= 0:
+            return 0.0
+        P = order.limit_price
+        if order.side == "buy":
+            if new_mid > P:
+                return 0.0
+            if prev_mid <= P:
+                return total_volume
+            if prev_mid == new_mid:
+                return 0.0
+            frac = (P - new_mid) / (prev_mid - new_mid)
+            return total_volume * max(0.0, min(1.0, frac))
+        else:  # sell
+            if new_mid < P:
+                return 0.0
+            if prev_mid >= P:
+                return total_volume
+            if prev_mid == new_mid:
+                return 0.0
+            frac = (new_mid - P) / (new_mid - prev_mid)
+            return total_volume * max(0.0, min(1.0, frac))
+
+    # ---- order send --------------------------------------------------- #
+    def send_market_order(
+        self,
+        symbol: str,
+        side: str,
+        volume: float,
+        sl: float = 0.0,
+        tp: float = 0.0,
+    ) -> dict:
+        book = self._book(symbol)
+        mid = book.mid()
+        if mid <= 0.0:
+            return {"ok": False, "reason": "no-price", "broker": "paper"}
+
+        walk = walk_book(book, side, float(volume))
+        if walk is None:
+            return {"ok": False, "reason": "no-liquidity", "broker": "paper"}
+
+        direction = 1.0 if side == "buy" else -1.0
+        # Adverse slippage vs mid, in bps (positive = worse than mid).
+        slippage_bps = (walk.vwap - mid) / mid * 10_000.0 * direction
+
+        commission = walk.filled_notional * self._commission_bps / 10_000.0
+        self.balance -= commission
+
         ticket = self._next_ticket()
         self._positions[symbol] = {
             "ticket": ticket, "symbol": symbol, "side": side,
-            "volume": volume, "open_price": fill, "sl": sl, "tp": tp,
+            "volume": walk.filled_notional,          # notional actually filled
+            "requested_notional": float(volume),
+            "open_price": walk.vwap, "sl": float(sl), "tp": float(tp),
             "open_time": self.clock.now(),
+            "open_commission": commission,
         }
-        return {"ticket": ticket, "symbol": symbol, "side": side, "volume": volume,
-                "fill_price": fill, "ok": True, "broker": "paper"}
+
+        return {
+            "ok": True,
+            "broker": "paper",
+            "ticket": ticket,
+            "symbol": symbol,
+            "side": side,
+            "fill_price": walk.vwap,                 # alias for backward compat
+            "vwap": walk.vwap,
+            "requested_notional": float(volume),
+            "filled_notional": walk.filled_notional,
+            "filled_base": walk.filled_base,
+            "partial": walk.remaining_notional > 0.0,
+            "remaining_notional": walk.remaining_notional,
+            "levels_consumed": walk.levels_consumed,
+            "slippage_bps": slippage_bps,
+            "commission": commission,
+        }
 
     def close_position(self, symbol: str, ticket: int) -> dict:
         pos = self._positions.pop(symbol, None)
         if pos is None:
             return {"ok": False, "reason": "no-position"}
-        price = self._last_price.get(symbol, pos["open_price"])
-        slip = price * self.cfg.get("execution.slippage_tolerance_pct", 0.05) / 100.0
-        fill = price - slip if pos["side"] == "buy" else price + slip
-        direction = 1 if pos["side"] == "buy" else -1
-        # volume is the notional exposure in account currency; P&L is return * notional.
-        ret = (fill - pos["open_price"]) / pos["open_price"] if pos["open_price"] else 0.0
-        pnl = direction * ret * pos["volume"]
-        self.balance += pnl
-        self.equity_peak = max(self.equity_peak, self.balance)
-        return {"ticket": ticket, "symbol": symbol, "fill_price": fill, "pnl": pnl, "ok": True, "broker": "paper"}
 
+        book = self._book(symbol)
+        mid = book.mid() or pos["open_price"]
+        side = "sell" if pos["side"] == "buy" else "buy"
+        walk = walk_book(book, side, float(pos["volume"]))
+        if walk is None:
+            # Book is empty; fall back to mid (should not happen in sim).
+            walk = type("W", (), {"vwap": mid, "filled_notional": pos["volume"],
+                                   "remaining_notional": 0.0, "levels_consumed": 0,
+                                   "filled_base": pos["volume"] / mid if mid else 0.0,
+                                   "top_price": mid})()
+
+        direction = 1.0 if pos["side"] == "buy" else -1.0
+        ret = (walk.vwap - pos["open_price"]) / pos["open_price"] if pos["open_price"] else 0.0
+        gross_pnl = direction * ret * walk.filled_notional
+        close_commission = walk.filled_notional * self._commission_bps / 10_000.0
+        net_pnl = gross_pnl - close_commission
+
+        self.balance += net_pnl
+        self.equity_peak = max(self.equity_peak, self.balance)
+
+        return {
+            "ok": True,
+            "broker": "paper",
+            "ticket": ticket,
+            "symbol": symbol,
+            "side": pos["side"],
+            "fill_price": walk.vwap,
+            "vwap": walk.vwap,
+            "closed_notional": walk.filled_notional,
+            "pnl": net_pnl,
+            "gross_pnl": gross_pnl,
+            "commission": close_commission,
+            "open_commission": pos.get("open_commission", 0.0),
+            "partial": walk.remaining_notional > 0.0,
+        }
+
+    # ---- state -------------------------------------------------------- #
     def get_account_state(self) -> dict:
-        return {"balance": self.balance, "equity_peak": self.equity_peak,
-                "drawdown_pct": max(0.0, (self.equity_peak - self.balance) / self.equity_peak * 100.0)}
+        return {
+            "balance": self.balance,
+            "equity_peak": self.equity_peak,
+            "drawdown_pct": max(0.0, (self.equity_peak - self.balance) / self.equity_peak * 100.0),
+        }
 
     def get_open_positions(self) -> List[dict]:
         return list(self._positions.values())
-
-    # ---- price feed for realistic fills ------------------------------
-    def update_price(self, symbol: str, mid: float) -> None:
-        self._last_price[symbol] = mid
-        # check SL/TP on open positions
-        pos = self._positions.get(symbol)
-        if pos and pos["sl"] and pos["tp"]:
-            if (pos["side"] == "buy" and (mid <= pos["sl"] or mid >= pos["tp"])) or \
-               (pos["side"] == "sell" and (mid >= pos["sl"] or mid <= pos["tp"])):
-                self.close_position(symbol, pos["ticket"])
 
 
 class MT5Broker(BrokerAdapter):  # pragma: no cover - requires live terminal

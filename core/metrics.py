@@ -10,6 +10,7 @@ slippage, P&L per strategy — alerts before execution problems become losses."
 
 from __future__ import annotations
 
+import os
 import threading
 from time import monotonic
 from typing import Dict, List, Optional
@@ -25,6 +26,10 @@ try:  # pragma: no cover - optional
     _HAVE_PROM = True
 except Exception:  # noqa: BLE001
     _HAVE_PROM = False
+
+# --- Phase 5: strict catalog validation (dev/CI) ---
+from core.metrics_catalog import MetricKind, spec, validate_usage
+_STRICT = os.environ.get("CRYPTONAUTE_STRICT_METRICS", "0") == "1"
 
 
 class Metrics:
@@ -42,6 +47,9 @@ class Metrics:
 
     # ---- counters -----------------------------------------------------
     def inc(self, name: str, value: float = 1.0, labels: Optional[Dict[str, str]] = None) -> None:
+        # --- Phase 5: strict catalog validation (dev/CI) ---
+        if _STRICT:
+            validate_usage(name, MetricKind.COUNTER, labels.keys() if labels else ())
         with self._lock:
             self._counters[name] = self._counters.get(name, 0.0) + value
         if self._prom_enabled and name not in self._prom:
@@ -51,6 +59,9 @@ class Metrics:
 
     # ---- gauges -------------------------------------------------------
     def set(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+        # --- Phase 5: strict catalog validation (dev/CI) ---
+        if _STRICT:
+            validate_usage(name, MetricKind.GAUGE, labels.keys() if labels else ())
         with self._lock:
             self._gauges[name] = value
         if self._prom_enabled and name not in self._prom:
@@ -60,6 +71,9 @@ class Metrics:
 
     # ---- histograms ---------------------------------------------------
     def observe(self, name: str, value: float) -> None:
+        # --- Phase 5: strict catalog validation (dev/CI) ---
+        if _STRICT:
+            validate_usage(name, MetricKind.HISTOGRAM, ())
         with self._lock:
             self._histograms.setdefault(name, []).append(value)
             if len(self._histograms[name]) > 10_000:
@@ -82,6 +96,15 @@ class Metrics:
             if v:
                 out[f"{k}_mean"] = sum(v) / len(v)
                 out[f"{k}_p95"] = sorted(v)[int(len(v) * 0.95) - 1]
+        return out
+
+    # --- Phase 5: catalog helpers -------------------------------------- #
+    def catalog_snapshot(self) -> dict:
+        """Return the values of every catalog metric. Used by tests + /metrics."""
+        from core.metrics_catalog import all_specs
+        out = {}
+        for s in all_specs():
+            out[s.name] = self.snapshot().get(s.name, 0.0)
         return out
 
     def reset(self) -> None:

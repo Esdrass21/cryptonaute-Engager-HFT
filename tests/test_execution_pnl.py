@@ -72,13 +72,13 @@ def test_pnl_scale_is_notional_based(tmp_path):
 def test_tuning_runs_and_pnl_stays_finite(tmp_path):
     cfg = Config.load()
     events = generate(cfg, 300)
-    results = tune(events, cfg, trials=4, min_trades=1)
-    assert results, "tuning produced results"
-    for r in results:
+    report = tune(events, cfg, trials=4, min_trades=1)
+    assert report.results, "tuning produced results"
+    for r in report.results:
         assert abs(r.net_pnl) < 5_000.0, f"tuning P&L exploded: {r.net_pnl}"
         assert r.max_dd_pct < 100.0
     # does not raise; best_passing may be None on flat data (gate working correctly)
-    assert best_passing(results) is None or isinstance(best_passing(results), object)
+    assert best_passing(report.results) is None or isinstance(best_passing(report.results), object)
 
 
 def test_crypto_broker_exchange_is_configurable():

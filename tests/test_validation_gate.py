@@ -67,12 +67,12 @@ def test_tuning_gate_passes_on_trended_history(tmp_path):
     cfg.set("data.market.sim.trend_strength", 0.0015)
     cfg.set("data.market.sim.mean_reversion", 0.004)
 
-    events = generate(cfg, steps=2000, seed=11, trend_strength=0.0015, mean_reversion=0.004)
+    events = generate(cfg, steps=3000, seed=11, trend_strength=0.0015, mean_reversion=0.004)
     assert events, "generator produced no events"
 
-    results = tune(events, cfg, trials=12, min_trades=3, max_dd_pct=5.0)
-    assert results, "tuning produced no trials"
-    passing = best_passing(results)
+    report = tune(events, cfg, trials=24, min_trades=3, max_dd_pct=5.0, is_frac=0.8)
+    assert report.results, "tuning produced no trials"
+    passing = best_passing(report.results)
     assert passing is not None, "no tuned config cleared the gate on trended history"
     assert passing.net_pnl > 0.0
     assert passing.trades >= 3

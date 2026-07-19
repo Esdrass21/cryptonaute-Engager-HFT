@@ -18,8 +18,10 @@ from core.component import Component
 from core.config import Clock, Config
 from core.events import EventType, make_event, NormalizedEvent
 from core.metrics import Metrics
+from core.keys import KeyManager
 
 from risk_management.veto_service import RiskVetoService
+from risk_management.signing import verify_any
 
 log = logging.getLogger("strategy.fsm")
 
@@ -79,16 +81,22 @@ class SymbolFSM:
 class StrategyOrchestrator(Component):
     """Drives per-symbol FSMs from ORDER_PROPOSAL + RISK_VETO + ORDER_FILL events."""
 
-    def __init__(self, bus, cfg, clock, metrics):
+    def __init__(self, bus, cfg, clock, metrics, key_manager: KeyManager | None = None):
         super().__init__(bus, cfg, clock, metrics, name="strategy.fsm")
         self._fsms: Dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", ["EURUSD"])}
         self.threshold = float(cfg.get("strategy.fusion.threshold", 0.55))
-        # conviction (|composite|) at which a signal-reversal closes an open trade.
-        # Lower = exits on mild pullbacks (whipsaw-prone); higher = rides trends. Tunable.
         self.exit_flip = float(cfg.get("strategy.exit_flip_conviction", 0.15))
         self._open_side: Dict[str, int] = {}
         self._pending_veto: Dict[str, dict] = {}
-        self._risk_secret = cfg.secret("RISK_SIGNING_KEY", "cryptonaute-local-dev-key")
+        # Phase 2: key manager -- no dev fallback
+        if key_manager is not None:
+            self.km = key_manager
+        else:
+            from core.keys import build_key_provider
+            self.km = KeyManager(
+                build_key_provider(cfg.get("core.keys", None)),
+                mode=cfg.get("mode", "paper"),
+            )
 
     def start(self) -> None:
         self._running = True
@@ -142,17 +150,17 @@ class StrategyOrchestrator(Component):
         sym = ev.payload.get("symbol")
         if sym not in self._pending_veto:
             return
-        # Architecture §5: execution only acts on a *verified, signed* risk permission.
-        # Reject any veto whose signature does not validate against the shared signing key.
-        if not RiskVetoService.verify(self._risk_secret, ev.payload):
-            log.error("RISK VETO for %s FAILED signature verification — DROPPED (tamper/forgery)", sym)
+        # Architecture S5: execution only acts on a *verified, signed* risk permission.
+        # Reject any veto whose signature does not validate against the signing key.
+        if not verify_any(self.km, ev.payload):
+            log.error("RISK VETO for %s FAILED signature verification -- DROPPED (tamper/forgery)", sym)
             self.metrics.inc("veto_signature_rejected")
             self._pending_veto.pop(sym, None)
             fsm = self._fsms.get(sym)
             if fsm is not None:
                 fsm.reset()
             return
-        decision = ev.payload.get("decision")
+        decision = ev.payload.get("decision", "")
         proposal = self._pending_veto.pop(sym)
         fsm = self._fsms[sym]
         if decision == "allow":
@@ -161,9 +169,17 @@ class StrategyOrchestrator(Component):
             self._open_side[sym] = 1 if proposal.get("direction", 1.0) > 0 else -1
             self.emit(make_event(
                 EventType.ORDER_PROPOSAL, "strategy.fsm",
-                payload={**proposal, "veto": "allow", "execute": True,
-                         "veto_signature": ev.payload.get("signature"),
-                         "veto_proposal": ev.payload.get("proposal")},
+                payload={
+                    **proposal,
+                    "veto": "allow",
+                    "execute": True,
+                    # --- signature bundle forwarded verbatim ---
+                    "veto_signature":       ev.payload.get("signature"),         # dict (v2)
+                    "veto_signed_payload":  ev.payload.get("signed_payload"),    # dict (v2)
+                    "veto_signature_v1":    ev.payload.get("signature_v1"),      # str  (legacy)
+                    "veto_proposal":        ev.payload.get("proposal"),
+                    "veto_decision":        ev.payload.get("decision"),
+                },
                 symbol_impact=[sym], timestamp=self.clock.now(),
             ))
             self.metrics.inc("order_forwarded_to_execution")

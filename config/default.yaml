@@ -64,7 +64,8 @@ strategy:
     of_weight: 0.05
   exit_flip_conviction: 0.15
   ev:
-    min_expected_value: 0.0
+    min_expected_value: 0.2
+    min_confidence: 0.6
     calibrated: false          # MUST be true before live (§7.3 gate)
 
 execution:
@@ -74,6 +75,24 @@ execution:
   base_backoff_s: 0.5
   slippage_tolerance_pct: 0.05
   poll_rtt_adaptive: true
+
+  # --- Phase 4 ---
+  commission_bps: 1.0        # set to 0.0 to match pre-Phase-4 P&L exactly
+  retry_partial: true        # retry the residual on partial fills
+  book:
+    n_levels: 5
+    tick_size_bps: 1.0       # half-spread in bps
+    top_size_notional: 50000.0
+    depth_growth: 1.6        # size_k = top * growth**k
+    size_jitter: 0.25
+
+  # --- Phase 4.5 ---
+  order_type: market          # market | limit
+  limit_offset_bps: 5.0       # limit price = mid ∓ offset
+  limit_ttl_s: 5.0            # seconds before unfilled limit expires
+  queue_flow_multiplier: 5.0  # flow = return * top_size * multiplier
+  queue_erosion_rate: 0.05    # fraction of queue_ahead removed per near-limit tick
+  queue_erosion_ticks: 2      # "near" = within this many ticks of the limit
 
 risk:
   max_position_pct: 2.0
@@ -90,15 +109,177 @@ validation:
   backtest:
     initial_capital: 10000.0
   walk_forward:
-    train_pct: 0.6
-    test_pct: 0.4
-    step: 0.2
+    train_pct: 0.5
+    test_pct: 0.1
+    step_pct: 0.1
+    n_splits: 5
+    embargo_pct: 0.01
+    horizon: 1
   monte_carlo:
     n_paths: 1000
     block_size: 10
+  execution:
+    latency_ms: 30.0
+    latency_jitter_ms: 10.0
+    slippage_bps: 1.5
+    slippage_df: 4.0
+    spread_bps: 0.5
+    commission_bps: 1.0
+    partial_fill_prob: 0.10
+    partial_fill_frac: [0.3, 0.9]
+    reference_notional: 100000.0
+    seed: 0
+  gate:
+    min_dsr: 0.0        # raise to e.g. 0.95 in live mode
+    max_pbo: 0.5
 
 observability:
   prometheus:
     enabled: false
     port: 9100
   log_level: INFO
+
+# Durable, append-only event log. Every event that passes schema validation
+# is persisted BEFORE dispatch — audit trail + crash recovery.
+event_log:
+  enabled: true
+  backend: file           # file | memory  (redis planned)
+  path: data/events.jsonl
+  fsync: true
+  checkpoint_path: data/events.jsonl.checkpoint
+
+validation:
+  signal_log:
+    enabled: false                     # opt-in — turn on for drift analysis
+    path: data/signal_log.jsonl
+
+# Signing key provider: env (dev) | file (production keyring).
+keys:
+  provider: env
+  env_var: RISK_SIGNING_KEY
+  key_id: env:default
+  # For provider=file:
+  # keyring_path: /etc/cryptonaute/keyring.json
+
+# Two-person rule for sensitive ops (circuit breaker reset, live activation,
+# risk-limit changes, key rotation).
+two_person:
+  min_approvers: 1        # set to 2 for live
+
+# Immutable audit log for two-person decisions.
+audit:
+  path: data/audit.jsonl
+  fsync: true
+
+# --- Phase 6 — macro feeds + nowcasts ---------------------------------- #
+data:
+  calendar:
+    # Optional explicit overrides — used when you know the exact time and consensus
+    overrides: []
+    #  - release_id: CPI_YOY
+    #    source: BLS
+    #    scheduled_ts: 1730000000.0
+    #    consensus: 0.3
+    #    prior: 0.2
+    #    units: percent
+  news:
+    bls:
+      race_mode: false
+      lookahead_s: 300.0
+      arm_before_s: 120.0
+      refresh_interval_s: 3600.0
+      race_timeout_ms: 500.0
+    fed:
+      enabled: true
+      poll_interval_s: 300.0
+    zillow:
+      enabled: true
+      poll_interval_s: 86400.0
+      us_region: "United States"
+    ism:
+      enabled: true
+      poll_interval_s: 86400.0
+    challenger:
+      enabled: true
+      poll_interval_s: 86400.0
+    forexfactory:
+      enabled: true
+      poll_interval_s: 3600.0
+      arm_before_s: 120.0
+      lookahead_s: 604800.0
+      countries: [USD, EUR, GBP, JPY]
+      min_impact: "High"
+    gdelt:
+      enabled: false
+      poll_interval_s: 300.0
+      max_records: 250
+      queries:
+        - id: "FED"
+          q: '(federal reserve OR FOMC OR powell) sourcelang:english'
+          symbols: [EURUSD, BTCUSDT]
+        - id: "CPI"
+          q: '(inflation OR "consumer price index" OR CPI) sourcelang:english'
+          symbols: [EURUSD]
+        - id: "GEO"
+          q: '(sanctions OR "central bank" OR "interest rate") sourcelang:english'
+          symbols: [XAUUSD, BTCUSDT]
+
+    # surprise stddev for normalizing surprises (configurable per release)
+    surprise_std:
+      NFP: 70.0                 # thousands
+      CPI_YOY: 0.15             # percentage points
+      CPI_MOM: 0.05
+      CORE_CPI_YOY: 0.15
+      UNEMPLOYMENT_RATE: 0.10
+      PPI_YOY: 0.20
+  fred:
+    series:
+      - ICSA
+      - CCSA
+      - ADPMNUSNERSA
+      - JTSHIR
+      - JTSJOL
+      - RSAFS
+      - PCEPI
+      - PCEPILFE
+      - DGS2
+      - DGS10
+      - DCOILWTICO
+      - GASREGW
+    poll_interval_s: 3600.0
+  consensus:
+    overrides: []
+
+nowcast:
+  nfp:
+    coefficients_path: config/nowcast/nfp_coefficients.json
+  cpi:
+    coefficients_path: config/nowcast/cpi_coefficients.json
+
+strategy:
+  release_drift:
+    enabled: true
+    min_surprise_z: 1.5
+    max_concurrent: 1
+    rules: {}
+
+notifications:
+  telegram:
+    enabled: false
+    bot_token_env: TELEGRAM_BOT_TOKEN
+    chat_id_env: TELEGRAM_CHAT_ID
+    # Optional: hardcode the channel (less secure — prefer env):
+    # chat_id: "-100xxxxxxxxxx"
+    min_severity: "info"          # info | warning | critical
+    events:
+      - order_proposal
+      - risk_veto
+      - order_fill
+      - order_reject
+      - circuit_breaker
+      - release_actual
+      - nowcast
+      - order_exit
+    allow_in_replay: false
+    rate_per_min: 20
+    queue_size: 500

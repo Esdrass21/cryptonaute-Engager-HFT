@@ -1,4 +1,6 @@
-"""Validation & research harness (architecture §7.3 + §8).
+# validation/engine.py
+"""
+Validation & research harness (architecture §7.3 + §8).
 
 Before ANY strategy goes live it must pass, in order:
   1. Backtest on historical data
@@ -6,6 +8,12 @@ Before ANY strategy goes live it must pass, in order:
   3. Monte Carlo stress testing
   4. Paper trading (the live paper broker)
   5. Small live capital deployment
+
+Phase 3 additions:
+  - Purged, embargoed cross-validation (López de Prado, AFML ch. 7)
+  - Deflated Sharpe Ratio + PBO (Bailey & López de Prado)
+  - Execution-aware backtest with deterministic latency, fat-tailed slippage,
+    spread, commission, and probabilistic partial fills.
 
 This module provides deterministic, dependency-light implementations of (1)-(3) plus the
 replay harness (§8) that re-plays exact recorded history (ticks, candles, news) through the
@@ -18,11 +26,14 @@ not a reimplementation.
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+from validation.execution_model import ExecutionModel, build_execution_model
 
 log = logging.getLogger("validation.engine")
 
@@ -58,6 +69,31 @@ class BacktestResult:
         }
 
 
+@dataclass
+class Fold:
+    """One walk-forward fold result."""
+    win_rate: float
+    n_trades: int
+    returns: np.ndarray
+
+
+@dataclass
+class FoldSummary:
+    """Aggregated across folds."""
+    n_folds: int
+    avg_oos_win_rate: float
+    oos_returns: np.ndarray
+
+
+def summarize_folds(folds: List[Fold]) -> FoldSummary:
+    """Aggregate fold results into a single summary."""
+    if not folds:
+        return FoldSummary(0, 0.0, np.array([]))
+    wr = float(np.mean([f.win_rate for f in folds]))
+    oos = np.concatenate([np.asarray(f.returns, dtype=float) for f in folds]) if folds else np.array([])
+    return FoldSummary(len(folds), wr, oos)
+
+
 def vectorized_backtest(
     prices: np.ndarray,
     signal: np.ndarray,
@@ -65,6 +101,8 @@ def vectorized_backtest(
     initial_capital: float = 10_000.0,
     fee_pct: float = 0.0005,
     position_pct: float = 2.0,
+    exec_model: Optional[ExecutionModel] = None,
+    symbol: str = "X",
 ) -> BacktestResult:
     """Simple long/flat/short backtest driven by a precomputed signal in [-1,1].
 
@@ -72,6 +110,9 @@ def vectorized_backtest(
     This is the *vectorized* reference used to calibrate the EV engine and to sanity-check the
     event-driven engine output against (architecture §8: "vectorized backtesting on existing
     history" first).
+
+    Phase 3: applies exec_model (latency, slippage, spread, commission, partial fills)
+    to each fill if provided.
     """
     equity = initial_capital
     peak = equity
@@ -81,32 +122,63 @@ def vectorized_backtest(
     entry_price = 0.0
     entry_t = 0.0
     n = min(len(prices), len(signal) + 1) if len(signal) else len(prices)
+
+    rep = None
     for i in range(1, n):
         s = signal[i] if i < len(signal) else 0.0
         # close prior position at signal flip
         if pos != 0 and np.sign(s) != np.sign(pos) and s != 0:
-            ret = (prices[i] - entry_price) / entry_price * pos
-            pnl = equity * (position_pct / 100.0) * (ret - fee_pct * 2)
+            exit_px = prices[i]
+            if exec_model is not None:
+                rep = exec_model.apply(
+                    symbol=symbol, side="sell" if pos > 0 else "buy",
+                    mid_price=prices[i], qty=1.0, ts=float(i),
+                )
+                exit_px = rep.fill_price
+            ret = (exit_px - entry_price) / entry_price * pos
+            size = equity * (position_pct / 100.0)
+            if exec_model is not None:
+                size *= rep.filled_qty  # partial fill scaling
+            pnl = size * (ret - fee_pct * 2) - (rep.commission if exec_model else 0.0)
             equity += pnl
-            trades.append(Trade(entry_t, float(i), int(pos), entry_price, prices[i], pnl, "flip"))
+            trades.append(Trade(entry_t, float(i), int(pos), entry_price, exit_px, pnl, "flip"))
             peak = max(peak, equity)
             pos = 0
         # open new position
         if s != 0 and pos == 0:
+            fill_px = prices[i]
+            if exec_model is not None:
+                rep = exec_model.apply(
+                    symbol=symbol, side="buy" if s > 0 else "sell",
+                    mid_price=prices[i], qty=1.0, ts=float(i),
+                )
+                fill_px = rep.fill_price
             pos = int(np.sign(s))
-            entry_price = prices[i]
+            entry_price = fill_px
             entry_t = float(i)
         eq_curve.append(equity)
     # close at end
     if pos != 0:
-        ret = (prices[-1] - entry_price) / entry_price * pos
-        pnl = equity * (position_pct / 100.0) * (ret - fee_pct * 2)
+        exit_px = prices[-1]
+        commission = 0.0
+        if exec_model is not None:
+            rep = exec_model.apply(
+                symbol=symbol, side="sell" if pos > 0 else "buy",
+                mid_price=prices[-1], qty=1.0, ts=float(len(prices) - 1),
+            )
+            exit_px = rep.fill_price
+            commission = rep.commission
+        ret = (exit_px - entry_price) / entry_price * pos
+        size = equity * (position_pct / 100.0)
+        if exec_model is not None:
+            size *= rep.filled_qty
+        pnl = size * (ret - fee_pct * 2) - commission
         equity += pnl
-        trades.append(Trade(entry_t, float(len(prices) - 1), int(pos), entry_price, prices[-1], pnl, "eod"))
+        trades.append(Trade(entry_t, float(len(prices) - 1), int(pos), entry_price, exit_px, pnl, "eod"))
     eq = np.array(eq_curve)
-    rets = np.diff(eq) / eq[:-1]
+    rets = np.diff(eq) / np.where(eq[:-1] == 0, 1e-9, eq[:-1])
     sharpe = float(np.mean(rets) / (np.std(rets) + 1e-9) * np.sqrt(252)) if len(rets) > 1 else 0.0
-    dd = float((1 - eq / np.maximum.accumulate(eq)).max() * 100.0)
+    dd = float((1 - eq / np.maximum.accumulate(eq)).max() * 100.0) if len(eq) else 0.0
     wins = sum(1 for t in trades if t.pnl > 0)
     return BacktestResult(
         trades=trades, equity_curve=eq_curve, total_pnl=equity - initial_capital,
@@ -116,36 +188,50 @@ def vectorized_backtest(
 
 
 def walk_forward(
-    prices: np.ndarray,
-    make_signal,
+    prices,
+    strategy_fn,
     *,
-    train_frac: float = 0.6,
-    test_frac: float = 0.2,
-    step_frac: float = 0.2,
+    n_splits: int = 5,
+    train_pct: float = 0.5,
+    test_pct: float = 0.1,
+    step_pct: float = 0.1,
+    embargo_pct: float = 0.01,
+    horizon: int = 1,
     initial_capital: float = 10_000.0,
-) -> List[BacktestResult]:
-    """Rolling walk-forward: retrain signal on train window, test on subsequent window.
-
-    ``make_signal(window)`` returns a signal array aligned to ``window``. We slide the window
-    and backtest each out-of-sample test segment. Returns one result per fold.
+    exec_model: Optional[ExecutionModel] = None,
+    label_end_idx=None,
+) -> List[Fold]:
     """
-    n = len(prices)
-    results: List[BacktestResult] = []
-    i = 0
-    while True:
-        train_end = int(i + n * train_frac)
-        test_end = int(train_end + n * test_frac)
-        if test_end > n:
-            break
-        train = prices[i:train_end]
-        test = prices[train_end:test_end]
-        sig = make_signal(train, test)
-        r = vectorized_backtest(test, sig, initial_capital=initial_capital)
-        results.append(r)
-        i += int(n * step_frac)
-        if i + int(n * (train_frac + test_frac)) > n:
-            break
-    return results
+    Purged, embargoed walk-forward.
+
+    Returns one Fold per split, each with .win_rate, .n_trades, .returns.
+
+    ``strategy_fn(train_arr, test_arr)`` returns a signal array aligned to ``test_arr``.
+    Uses PurgedWalkForward internally so no label leaks across the train/test boundary.
+    """
+    from validation.cv import PurgedWalkForward
+
+    arr = np.asarray(prices, dtype=float)
+    T = len(arr)
+    splitter = PurgedWalkForward(
+        n_splits=n_splits, train_pct=train_pct, test_pct=test_pct,
+        step_pct=step_pct, embargo_pct=embargo_pct, horizon=horizon,
+        label_end_idx=label_end_idx,
+    )
+    folds: List[Fold] = []
+    for split in splitter.split(T):
+        tr, te = split.train_idx, split.test_idx
+        sig = strategy_fn(arr[tr], arr[te])
+        sig = np.asarray(sig, dtype=float)
+        if len(sig) < 2:
+            continue
+        # Apply execution model to the test segment if available
+        bt = vectorized_backtest(arr[te], sig, initial_capital=initial_capital,
+                                  exec_model=exec_model, symbol="X")
+        rets = np.diff(np.asarray(bt.equity_curve, dtype=float)) if len(bt.equity_curve) > 1 else np.array([0.0])
+        wins = (rets > 0).sum()
+        folds.append(Fold(win_rate=wins / max(1, len(rets)), n_trades=bt.n, returns=rets))
+    return folds
 
 
 def monte_carlo(

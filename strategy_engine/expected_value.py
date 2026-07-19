@@ -31,7 +31,8 @@ log = logging.getLogger("strategy.ev")
 class ExpectedValueEngine(Component):
     def __init__(self, bus, cfg, clock, metrics):
         super().__init__(bus, cfg, clock, metrics, name="strategy.ev")
-        self.min_ev = float(cfg.get("strategy.ev.min_expected_value", 0.0))
+        self.min_ev = float(cfg.get("strategy.ev.min_expected_value", 0.2))
+        self.min_confidence = float(cfg.get("strategy.ev.min_confidence", 0.6))
         self.calibrated = bool(cfg.get("strategy.ev.calibrated", False))
         # running calibration per symbol: hit-rate + avg win/loss (R-multiple)
         self._wins: Dict[str, int] = defaultdict(int)
@@ -62,6 +63,9 @@ class ExpectedValueEngine(Component):
             return
         sym = ev.payload["symbol"]
         score = float(ev.payload["composite"])
+        confidence = float(ev.payload.get("confidence", 0.0))
+        if abs(score) < 0.5 or confidence < self.min_confidence:
+            return
         direction = 1 if score > 0 else -1
         # Calibrated probabilities (fall back to a conservative prior if no data).
         n = self._wins[sym] + self._losses[sym]
@@ -73,20 +77,23 @@ class ExpectedValueEngine(Component):
         else:
             p, R, D = 0.5, 1.0, 1.0
         ev_est = p * R - (1 - p) * D
+        passes_ev = bool(ev_est >= self.min_ev)
+        if not passes_ev:
+            return
         self.emit(make_event(
             EventType.ORDER_PROPOSAL, "strategy.ev",
             payload={
                 "symbol": sym,
                 "direction": float(direction),
                 "composite": score,
-                "confidence": float(ev.payload.get("confidence", 0.0)),
+                "confidence": confidence,
                 "ev": float(ev_est),
                 "win_prob": float(p),
                 "reward_R": float(R),
                 "drawdown_D": float(D),
                 "expected_slippage_pct": float(self.cfg.get("execution.slippage_tolerance_pct", 0.05)),
                 "calibrated": self.calibrated,
-                "passes_ev": bool(ev_est >= self.min_ev),
+                "passes_ev": passes_ev,
             },
             symbol_impact=[sym], timestamp=self.clock.now(),
         ))

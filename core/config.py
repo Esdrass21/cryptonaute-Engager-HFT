@@ -100,6 +100,24 @@ class Config:
             "prometheus": {"enabled": False, "port": 9100},
             "log_level": "INFO",
         },
+        "event_log": {
+            "enabled": True,
+            "backend": "file",
+            "path": "data/events.jsonl",
+            "fsync": True,
+        },
+        "keys": {
+            "provider": "env",
+            "env_var": "RISK_SIGNING_KEY",
+            "key_id": "env:default",
+        },
+        "audit": {
+            "path": "data/audit.jsonl",
+            "fsync": True,
+        },
+        "two_person": {
+            "min_approvers": 1,
+        },
     }
 
     def __init__(self, data: Dict[str, Any]) -> None:

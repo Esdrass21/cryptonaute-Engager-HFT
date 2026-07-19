@@ -25,6 +25,8 @@ from collections import defaultdict, deque
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from .events import EventType, NormalizedEvent, make_event
+from .event_log import EventLog
+from .schema_registry import registry, SchemaError
 
 log = logging.getLogger("core.bus")
 
@@ -53,10 +55,12 @@ class MessageBus:
         backend: str = "memory",
         redis_url: Optional[str] = None,
         replay: bool = False,
+        event_log: EventLog | None = None,
     ) -> None:
         self.backend = backend
         self.redis_url = redis_url
         self.replay = replay
+        self._event_log = event_log
         self._subs: Dict[str, List[Handler]] = defaultdict(list)
         self._subs_all: List[Handler] = []
         self._lock = threading.RLock()
@@ -104,6 +108,18 @@ class MessageBus:
     # publishing
     # ------------------------------------------------------------------ #
     def publish(self, event: NormalizedEvent) -> None:
+        # 1. Validate against schema registry (fail-fast, before persistence).
+        event_dict = event.to_dict()
+        try:
+            registry.validate(event_dict)
+        except SchemaError as exc:
+            log.error("MessageBus: schema validation failed for %s: %s", event.type, exc)
+            raise
+
+        # 2. Persist first — audit + recovery. If this raises, nothing dispatches.
+        if self._event_log is not None:
+            self._event_log.append(event_dict)
+
         if self.replay:
             # In replay mode, a handler's emitted event is a *reaction* to the event
             # currently being dispatched. It must be processed BEFORE the next raw
@@ -115,7 +131,7 @@ class MessageBus:
             return
         if self.backend == "redis" and self._redis is not None:
             try:  # pragma: no cover - optional backend
-                self._redis.xadd(self._redis_stream, {"ev": json.dumps(event.to_dict())})
+                self._redis.xadd(self._redis_stream, {"ev": json.dumps(event_dict)})
             except Exception as exc:  # noqa: BLE001
                 log.warning("MessageBus: redis xadd failed (%s) — dispatching in-memory", exc)
                 self._dispatch(event)
@@ -164,6 +180,20 @@ class MessageBus:
 
     def replay_size(self) -> int:
         return len(self._replay_queue)
+
+    # ------------------------------------------------------------------ #
+    # event log replay
+    # ------------------------------------------------------------------ #
+    def replay_log(self, log: EventLog | None = None):
+        """
+        Yield events from the log, migrated to the latest schema version.
+        Useful for the replay harness and recovery.
+        """
+        target = log or self._event_log
+        if target is None:
+            return
+        for event in target.replay():
+            yield registry.migrate_to_latest(event)
 
 
 # Convenience module-level singleton used by the orchestrator. Tests build their own.

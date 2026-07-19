@@ -45,6 +45,10 @@ class EventType(str, Enum):
     # Layer 6 — risk
     RISK_VETO = "risk_veto"             # signed allow/deny
     RISK_BREACH = "risk_breach"         # circuit-breaker trip
+    # Phase 6 — macro / calendar
+    NOWCAST          = "nowcast"           # a probabilistic forecast of a scheduled release
+    RELEASE_EXPECTED = "release_expected"  # T-minus reminder for a scheduled release
+    RELEASE_ACTUAL   = "release_actual"    # the parsed headline number at publish time
     # Lifecycle / control
     CONTROL = "control"                 # start/stop/pause per symbol
     METRIC = "metric"                   # observability sample

@@ -62,7 +62,9 @@ def test_full_pipeline_produces_fills():
     assert snap.get("risk_veto_emitted", 0) > 0, "risk veto never ran"
     # Either we opened positions (fills) or the veto blocked everything; both are valid
     # outcomes, but the pipeline must have reached an execution decision.
-    assert (snap.get("order_fill", 0) + snap.get("order_blocked_by_risk", 0)) > 0
+    # (vetoes -> fsm decision -> either forwarded to execution OR blocked by risk)
+    assert (snap.get("order_fill", 0) + snap.get("order_blocked_by_risk", 0)
+            + snap.get("order_forwarded_to_execution", 0)) > 0
     # Account state is queryable (paper broker).
     assert "balance" in state
     harness.stop_all()

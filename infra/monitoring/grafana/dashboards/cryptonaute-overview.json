@@ -1,0 +1,85 @@
+{
+  "title": "Cryptonaute — Overview",
+  "uid": "cryptonaute-overview",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "stat", "title": "Gate PASS", "gridPos": { "x": 0, "y": 0, "w": 3, "h": 4 },
+      "targets": [{ "expr": "validation_gate_pass", "refId": "A" }],
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "0": { "text": "FAIL", "color": "red" },
+                                       "1": { "text": "PASS", "color": "green" } } }
+      ] } }
+    },
+    {
+      "type": "stat", "title": "DSR", "gridPos": { "x": 3, "y": 0, "w": 3, "h": 4 },
+      "targets": [{ "expr": "validation_dsr", "refId": "A" }]
+    },
+    {
+      "type": "stat", "title": "PBO", "gridPos": { "x": 6, "y": 0, "w": 3, "h": 4 },
+      "targets": [{ "expr": "validation_pbo", "refId": "A" }]
+    },
+    {
+      "type": "stat", "title": "Circuit Breaker", "gridPos": { "x": 9, "y": 0, "w": 3, "h": 4 },
+      "targets": [{ "expr": "circuit_breaker_state", "refId": "A" }],
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "0": { "text": "ARMED", "color": "green" },
+                                       "1": { "text": "TRIPPED", "color": "red" } } }
+      ] } }
+    },
+    {
+      "type": "timeseries", "title": "Veto decisions / sec",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(risk_veto_emitted_total{decision=\"allow\"}[1m])", "legendFormat": "allow" },
+        { "expr": "rate(risk_veto_emitted_total{decision=\"deny\"}[1m])",  "legendFormat": "deny"  },
+        { "expr": "rate(veto_signature_rejected_total[1m])",              "legendFormat": "sig rejected (L4)" },
+        { "expr": "rate(execution_veto_unverified_total[1m])",            "legendFormat": "sig rejected (L5)" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Slippage (bps) p50 / p95",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(execution_slippage_bps_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(execution_slippage_bps_bucket[5m]))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Account balance / drawdown",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "account_balance", "legendFormat": "balance" },
+        { "expr": "account_drawdown_pct", "legendFormat": "drawdown %" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Resting limits & queue depth",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "resting_orders", "legendFormat": "resting {{symbol}}" },
+        { "expr": "rate(order_limit_placed_total[1m])",   "legendFormat": "placed/s" },
+        { "expr": "rate(order_limit_expired_total[1m])",  "legendFormat": "expired/s" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Fill mix",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(order_fill_total[1m])",         "legendFormat": "fills/s {{order_type}}" },
+        { "expr": "rate(order_partial_fill_total[1m])", "legendFormat": "partial/s" },
+        { "expr": "rate(order_reject_total[1m])",       "legendFormat": "rejects/s {{reason}}" }
+      ]
+    },
+    {
+      "type": "timeseries", "title": "Execution RTT (s)",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5,  rate(execution_rtt_s_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(execution_rtt_s_bucket[5m]))", "legendFormat": "p95" }
+      ]
+    }
+  ]
+}
