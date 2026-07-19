@@ -234,8 +234,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Live/paper broker backend (--live defaults to mt5)")
     ap.add_argument("--exchange", default=None,
                     help="Crypto exchange id for broker=crypto: binance|bybit|okx|kraken|coinbase")
-    ap.add_argument("--market", default=None, choices=["sim", "mt5", "crypto"],
-                    help="Market data source override (default from config: sim)")
+    ap.add_argument("--market", default=None, choices=["sim", "mt5", "crypto", "hybrid"],
+                    help="Market data source override (hybrid = MT5 forex/gold + crypto public feed)")
     ap.add_argument("--news", default=None, choices=["sim", "rss", "factory"],
                     help="News feed source override (rss = live public RSS, no key)")
     ap.add_argument("--steps", type=int, default=None, help="Bound run length (tests/quick runs)")

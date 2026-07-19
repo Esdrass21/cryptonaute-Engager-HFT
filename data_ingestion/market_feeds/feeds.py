@@ -272,10 +272,61 @@ class CryptoMarketFeed(MarketFeed):
                 time.sleep(self.interval)
 
 
+class HybridMarketFeed(MarketFeed):
+    """Mix MT5 (forex/metals) + a crypto exchange feed (public data) in one platform instance.
+
+    Trade forex/gold via your MT5 (FTMO) account while watching crypto live from Binance
+    PUBLIC market data — no Binance API key (so no passkey/biometric). Each sub-feed handles
+    only the symbols it owns: MT5 gets EURUSD/XAUUSD, the crypto feed gets BTCUSDT/etc.
+    """
+
+    def __init__(self, bus, cfg, clock, metrics):
+        super().__init__(bus, cfg, clock, metrics, name="hybrid.market")
+        self._mt5_syms = [s for s in self.symbols
+                           if CryptoMarketFeed._to_ccxt_symbol(s) is None]
+        self._crypto_syms = [s for s in self.symbols
+                              if CryptoMarketFeed._to_ccxt_symbol(s) is not None]
+        self._mt5 = MT5MarketFeed(bus, cfg, clock, metrics) if self._mt5_syms else None
+        self._crypto = CryptoMarketFeed(bus, cfg, clock, metrics) if self._crypto_syms else None
+        if self._mt5:
+            self._mt5.symbols = self._mt5_syms
+        if self._crypto:
+            self._crypto.symbols = self._crypto_syms
+
+    def start(self) -> None:
+        super().start()
+        if self._mt5:
+            self._mt5.start()
+            log.info("Hybrid feed: MT5 for %s", self._mt5_syms)
+        if self._crypto:
+            self._crypto.start()
+            log.info("Hybrid feed: %s crypto for %s", self._crypto.exchange_id, self._crypto_syms)
+
+    def run_once(self) -> None:
+        # MT5 sub-feed pumps itself via asyncio (its start() launches the event loop task);
+        # it has no synchronous run_once, so we only drive the crypto sub-feed here.
+        if self._crypto:
+            self._crypto.run_once()
+
+    def run_realtime(self, steps: Optional[int] = None) -> None:
+        i = 0
+        while self._running and (steps is None or i < steps):
+            self.run_once()
+            i += 1
+            if self._running:
+                time.sleep(self.interval)
+
+    @property
+    def interval(self) -> float:
+        return float(self.cfg.get("data.market.crypto.interval_s", 2.0))
+
+
 def build_market_feed(bus: MessageBus, cfg: Config, clock: Clock, metrics: Metrics) -> MarketFeed:
     source = cfg.get("data.market.source", "sim")
     if source == "mt5":
         return MT5MarketFeed(bus, cfg, clock, metrics)
     if source == "crypto":
         return CryptoMarketFeed(bus, cfg, clock, metrics)
+    if source == "hybrid":
+        return HybridMarketFeed(bus, cfg, clock, metrics)
     return SimMarketFeed(bus, cfg, clock, metrics)

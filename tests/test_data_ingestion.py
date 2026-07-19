@@ -157,3 +157,34 @@ def test_check_keys_reports_absence_without_leaking(capsys, monkeypatch):
     assert rc == 0
     assert "BINANCE_API_KEY" in out and "MISTRAL_API_KEY" in out
     assert "keys absent" in out  # no live auth attempted when absent
+
+
+def test_hybrid_feed_routes_symbols_to_subfeeds():
+    """Hybrid feed splits forex/metals -> MT5 sub-feed, crypto -> ccxt sub-feed."""
+    from data_ingestion.market_feeds import feeds as mfeeds
+
+    cfg = Config.load()
+    cfg.set("symbols", ["EURUSD", "XAUUSD", "BTCUSDT"])
+    cfg.set("execution.exchange", "binance")
+    feed = mfeeds.HybridMarketFeed(MessageBus(), cfg, Clock(), Metrics())
+    # MT5 gets the non-crypto symbols, crypto gets BTCUSDT
+    assert set(feed._mt5_syms) == {"EURUSD", "XAUUSD"}
+    assert feed._crypto_syms == ["BTCUSDT"]
+    assert isinstance(feed._mt5, mfeeds.MT5MarketFeed)
+    assert isinstance(feed._crypto, mfeeds.CryptoMarketFeed)
+
+    # crypto sub-feed emits when polled with a fake exchange (no network); MT5 absent here
+    # (no MT5 terminal) but the hybrid must not crash — its run_once just drives crypto.
+    class FakeEx:
+        def fetch_ticker(self, pair):
+            return {"bid": 60000.0, "ask": 60010.0, "last": 60005.0, "baseVolume": 1.0}
+
+        def fetch_ohlcv(self, pair, timeframe="1m", limit=1):
+            return [[0, 60000.0, 60100.0, 59900.0, 60005.0, 1.0]]
+
+    feed._crypto._ex = FakeEx()
+    feed._crypto._running = True
+    seen = []
+    feed.bus.subscribe(EventType.TICK, lambda e: seen.append(e))
+    feed.run_once()  # only the crypto sub-feed is driven synchronously
+    assert any(e.payload["symbol"] == "BTCUSDT" for e in seen)
