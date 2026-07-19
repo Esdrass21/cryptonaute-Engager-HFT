@@ -178,6 +178,53 @@ def cmd_tune(args) -> int:
     return 0
 
 
+def cmd_check_keys(args) -> int:
+    """Report which credentials are present in .env (never prints secret values).
+
+    For Binance, if both key+secret are present, does a live SIGNED balance read to confirm
+    the keys actually authenticate (GET /api/v3/account via ccxt fetch_balance). No orders.
+    """
+    cfg = _load_cfg(args.config)
+
+    def _present(k: str) -> bool:
+        v = cfg.secret(k, "")
+        return bool(v and v.strip())
+
+    print("\nCredential check (values never shown):\n")
+    exchange = str(cfg.get("execution.exchange", "binance")).lower()
+    ek = f"{exchange.upper()}_API_KEY"
+    es = f"{exchange.upper()}_API_SECRET"
+    rows = [
+        (f"{exchange} key", ek, _present(ek)),
+        (f"{exchange} secret", es, _present(es)),
+        ("Mistral (L3)", "MISTRAL_API_KEY", _present("MISTRAL_API_KEY")),
+        ("MT5 login", "MT5_LOGIN", _present("MT5_LOGIN")),
+        ("MT5 password", "MT5_PASSWORD", _present("MT5_PASSWORD")),
+        ("MT5 server", "MT5_SERVER", _present("MT5_SERVER")),
+    ]
+    for label, key, ok in rows:
+        print(f"  [{'OK ' if ok else '   '}] {label:16s} ({key})")
+
+    # Live signed check for the exchange when both halves are present.
+    if _present(ek) and _present(es):
+        print(f"\n  Authenticating with {exchange} (signed balance read, no orders)...")
+        try:
+            import ccxt
+
+            klass = getattr(ccxt, exchange, ccxt.binance)
+            ex = klass({"apiKey": cfg.secret(ek), "secret": cfg.secret(es),
+                        "enableRateLimit": True})
+            bal = ex.fetch_balance()
+            nonzero = {k: v for k, v in bal.get("total", {}).items() if v}
+            print(f"  [OK ] {exchange} authenticated — {len(nonzero)} non-zero balances")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [ERR] {exchange} auth failed: {exc}")
+            return 1
+    else:
+        print(f"\n  ({exchange} keys absent — skipping live auth check)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="cryptonaute", description="Cryptonaute HFT Quant Platform")
     ap.add_argument("--config", default=None)
@@ -205,12 +252,16 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--min-trades", dest="min_trades", type=int, default=5)
     ap.add_argument("--max-dd", dest="max_dd", type=float, default=2.0)
     ap.add_argument("--out", default="config/tuned.yaml", help="Where to write best tuned config")
+    ap.add_argument("--check-keys", dest="check_keys", action="store_true",
+                    help="Report which credentials are present in .env (+ live exchange auth)")
     return ap
 
 
 def main(argv: list | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     args = build_parser().parse_args(argv)
+    if args.check_keys:
+        return cmd_check_keys(args)
     if args.generate:
         return cmd_generate(args)
     if args.validate:

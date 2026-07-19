@@ -143,3 +143,17 @@ def test_rss_news_feed_emits_from_mocked_feedparser(monkeypatch):
     # de-dup: a second poll of the same entries emits nothing new
     feed._poll()
     assert len(out) == 2
+
+
+def test_check_keys_reports_absence_without_leaking(capsys, monkeypatch):
+    """--check-keys returns 0 and reports missing creds; never prints secret values."""
+    import main as m
+
+    for k in ("BINANCE_API_KEY", "BINANCE_API_SECRET", "MISTRAL_API_KEY",
+              "MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER"):
+        monkeypatch.delenv(k, raising=False)
+    rc = m.cmd_check_keys(m.build_parser().parse_args(["--check-keys"]))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "BINANCE_API_KEY" in out and "MISTRAL_API_KEY" in out
+    assert "keys absent" in out  # no live auth attempted when absent
