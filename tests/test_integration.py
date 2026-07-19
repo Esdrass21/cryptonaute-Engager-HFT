@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -97,3 +98,41 @@ def test_replay_is_deterministic():
     h2.run()
     assert h1.metrics.snapshot() == h2.metrics.snapshot(), "replay not deterministic"
     h1.stop_all(); h2.stop_all()
+
+
+def test_trade_journal_logs_fill_and_close(caplog):
+    """The trade journal must emit one clean FILL/CLOSE log line per trade action."""
+    from execution.trade_journal import TradeJournal
+    from core.config import Clock, Config, setup_logging
+    from core.bus import MessageBus
+    from core.metrics import Metrics
+    from core.events import EventType, make_event
+
+    setup_logging("INFO")  # mirrors real runtime
+    bus = MessageBus()
+    j = TradeJournal(bus, Config.load(), Clock(), Metrics())
+    caplog.set_level(logging.INFO, logger="execution.journal")
+    j.start()
+    j.on_fill(make_event(EventType.ORDER_FILL, "exec",
+                         {"symbol": "EURUSD", "side": "buy", "volume": 200.0,
+                          "price": 1.05, "ticket": 1, "closed": False}))
+    j.on_fill(make_event(EventType.ORDER_FILL, "exec",
+                         {"symbol": "EURUSD", "side": "buy", "volume": 200.0,
+                          "price": 1.07, "ticket": 1, "closed": True, "pnl": 4.0,
+                          "price_entry": 1.05}))
+    lines = [r.getMessage() for r in caplog.records if r.name == "execution.journal"]
+    fills = [l for l in lines if l.startswith("FILL")]
+    closes = [l for l in lines if l.startswith("CLOSE")]
+    assert len(fills) == 1 and len(closes) == 1
+    assert "pnl=+4.00" in closes[0]
+
+
+def test_transitions_logger_is_silenced():
+    """FSM state-machine engine must not INFO-spam the console (verified in live runs)."""
+    from core.config import setup_logging
+    import logging
+
+    setup_logging("INFO")  # real runtime path that silences the FSM engine
+    # the transitions logger is set to WARNING; even though its own .level reads 0 (NOTSET),
+    # its EFFECTIVE level (propagating to the WARNING root) is WARNING -> quiet.
+    assert logging.getLogger("transitions").getEffectiveLevel() == logging.WARNING

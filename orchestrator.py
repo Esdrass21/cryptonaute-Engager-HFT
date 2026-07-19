@@ -29,6 +29,7 @@ from analytics.quant.regime import RegimeDetector
 from data_ingestion.market_feeds.feeds import build_market_feed
 from data_ingestion.news_feeds.feeds import build_news_feed
 from execution.order_manager import OrderManager
+from execution.trade_journal import TradeJournal
 from risk_management.circuit_breaker import CircuitBreaker
 from risk_management.portfolio_optimizer import PortfolioOptimizer
 from risk_management.veto_service import RiskVetoService
@@ -80,12 +81,14 @@ class Orchestrator:
         self.veto = RiskVetoService(bus, c, clk, m)
         self.portfolio = PortfolioOptimizer(bus, c, clk, m)
         self.circuit = CircuitBreaker(bus, c, clk, m)
+        # Audit trail (prints the trade flow cleanly; also written to logs/trading.log)
+        self.journal = TradeJournal(bus, c, clk, m)
 
         self.components = [
             self.market, self.news, self.quant, self.regime, self.macro,
             self.order_flow, self.nlp, self.review, self.anomaly,
             self.fusion, self.ev, self.fsm, self.execution,
-            self.veto, self.portfolio, self.circuit,
+            self.veto, self.portfolio, self.circuit, self.journal,
         ]
 
     def start(self) -> None:

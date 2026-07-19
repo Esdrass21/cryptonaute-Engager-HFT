@@ -170,12 +170,27 @@ class Clock:
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure structured logging once."""
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    # Quiet noisy third-party loggers in dev.
-    for name in ("urllib3", "asyncio", "apscheduler", "ccxt", "MetaTrader5"):
+    """Configure structured logging once: console + an on-disk ``logs/trading.log``."""
+    root = logging.getLogger()
+    if root.handlers:
+        # already configured (re-init in tests / replays) — don't stack handlers
+        return
+    fmt = logging.Formatter("%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+                            datefmt="%H:%M:%S")
+    root.setLevel(getattr(logging, level.upper(), logging.INFO))
+    sh = logging.StreamHandler()
+    sh.setFormatter(fmt)
+    root.addHandler(sh)
+    # On-disk audit trail of every run (trade flow, vetoes, errors).
+    log_dir = Path(__file__).resolve().parents[1] / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(log_dir / "trading.log", encoding="utf-8")
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
+    except OSError:
+        pass  # diskless env — console logging still works
+    # Quiet noisy third-party loggers in dev (incl. the FSM state-machine engine,
+    # which otherwise INFO-logs every state callback and drowns the trade feed).
+    for name in ("urllib3", "asyncio", "apscheduler", "ccxt", "MetaTrader5", "transitions"):
         logging.getLogger(name).setLevel(logging.WARNING)
