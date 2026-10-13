@@ -117,7 +117,7 @@ def format_event(event_type: str, payload: Dict[str, Any], ts: float) -> str:
             f"*📊 ORDER PROPOSAL*\n"
             f"`{stamp}`\n"
             f"Symbol: `{sym}`\n"
-            f"Side: `{side}` \\(dir={direction:+.0f}\\)\n"
+            f"Side: `{side}` \\({escape_mdv2(f'dir={direction:+.0f}')}\\)\n"
             f"Qty: `{qty}`\n"
             f"Source: `{src}`"
         )
@@ -147,7 +147,7 @@ def format_event(event_type: str, payload: Dict[str, Any], ts: float) -> str:
         if pnl is not None:
             extra = f"\nPnL: `{pnl:+.2f}`"
         return (
-            f"*{head}*\n"
+            f"*{escape_mdv2(head)}*\n"
             f"`{stamp}`\n"
             f"Symbol: `{sym}`\n"
             f"Side: `{side}`\n"
@@ -189,7 +189,7 @@ def format_event(event_type: str, payload: Dict[str, Any], ts: float) -> str:
             f"*📈 NOWCAST*\n"
             f"`{stamp}`\n"
             f"Release: `{rid}`\n"
-            f"Forecast: `{mean:.4f}` \\(σ={sd:.4f}\\)\n"
+            f"Forecast: `{mean:.4f}` \\({escape_mdv2(f'σ={sd:.4f}')}\\)\n"
             f"Edge vs consensus: `{edge:+.4f}`"
         )
 
@@ -312,7 +312,8 @@ class TelegramNotifier(Component):
         self.chat_id = n.get("chat_id") or cfg.secret(chat_env)
         # Relay/aggregator channel — receives ONLY confirmed signals + outcomes.
         self.relay_channel = n.get("relay_channel") or cfg.secret(relay_env)
-        self.relay_events = set(n.get("relay_events") or ["order_fill", "order_exit"])
+        # Relay mirrors every subscribed event unless explicitly restricted.
+        self.relay_events = set(n.get("relay_events") or self.events)
 
         rate = float(n.get("rate_per_min", 20.0))
         qsize = int(n.get("queue_size", 500))

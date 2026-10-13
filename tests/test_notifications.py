@@ -71,6 +71,31 @@ def test_format_generic_fallback():
     assert "`1`" in msg
 
 
+def test_format_order_proposal_escapes_reserved_equals():
+    msg = format_event("order_proposal", {
+        "symbol": "EURUSD", "side": "buy", "direction": 1.0,
+        "qty": 1.0, "source": "x",
+    }, ts=1_700_000_000.0)
+    # '=' and '+' are MarkdownV2-reserved and must be escaped.
+    assert r"dir\=\+1" in msg
+
+
+def test_format_order_fill_close_escapes_parens():
+    msg = format_event("order_fill", {
+        "symbol": "X", "side": "buy", "filled_notional": 100.0,
+        "price": 1.2345, "closed": True, "pnl": 12.34,
+    }, ts=1_700_000_000.0)
+    assert r"\(CLOSE\)" in msg
+
+
+def test_format_nowcast_escapes_sigma_and_equals():
+    msg = format_event("nowcast", {
+        "release_id": "CPI_YOY", "mean": 0.3, "stddev": 0.108,
+        "edge_vs_consensus": 0.01,
+    }, ts=1_700_000_000.0)
+    assert r"\=" in msg and r"0\.1080" in msg
+
+
 # ---------- Rate limiter -------------------------------------------------- #
 
 def test_bucket_allows_burst_then_throttles():
@@ -230,6 +255,8 @@ def test_notifier_routes_only_confirmed_events_to_relay(monkeypatch):
     monkeypatch.setenv("RELAY_CHANNEL", "Cryptonaute_Engager")
     cfg = Config.load()
     cfg.set("notifications.telegram.enabled", True)
+    # Explicit restriction: only confirmed outcomes reach the relay.
+    cfg.set("notifications.telegram.relay_events", ["order_fill", "order_exit"])
 
     n = TelegramNotifier(_bus(), cfg, _Clock(), _Metrics())
     n.start()
@@ -256,6 +283,35 @@ def test_notifier_routes_only_confirmed_events_to_relay(monkeypatch):
                            timestamp=2.0))
     assert len(main) == 2 and len(relay) == 1
     assert "ORDER FILL" in relay[0]
+
+    n._sender.close()
+    n._relay_sender.close()
+
+
+def test_relay_mirrors_all_events_by_default(monkeypatch):
+    from core.config import Config
+    from core.events import make_event
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake:token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100main")
+    monkeypatch.setenv("RELAY_CHANNEL", "Cryptonaute_Engager")
+    cfg = Config.load()
+    cfg.set("notifications.telegram.enabled", True)
+    # relay_events is unset in the default config -> mirror all events.
+
+    n = TelegramNotifier(_bus(), cfg, _Clock(), _Metrics())
+    n.start()
+    assert n.relay_events == n.events
+
+    main, relay = [], []
+    n._sender.enqueue = lambda text, sev: (main.append(text) or True)
+    n._relay_sender.enqueue = lambda text, sev: (relay.append(text) or True)
+
+    # A proposal is a signal — mirrored to the relay by default now.
+    n._on_event(make_event("order_proposal", "test",
+                           payload={"symbol": "EURUSD", "side": "buy",
+                                    "direction": 1.0, "qty": 1.0, "source": "t"},
+                           timestamp=1.0))
+    assert len(main) == 1 and len(relay) == 1
 
     n._sender.close()
     n._relay_sender.close()

@@ -268,11 +268,11 @@ notifications:
     enabled: true
     bot_token_env: TELEGRAM_BOT_TOKEN
     chat_id_env: TELEGRAM_CHAT_ID
-    relay_channel_env: RELAY_CHANNEL   # relay/aggregator channel (confirmed signals only)
+    relay_channel_env: RELAY_CHANNEL   # relay/aggregator channel
     # relay_channel: "@Cryptonaute_Engager"   # optional explicit override of the env var
-    relay_events:                      # event types forwarded to the relay channel
-      - order_fill
-      - order_exit
+    # The relay channel mirrors ALL subscribed events by default. To restrict it
+    # (e.g. confirmed fills/exits only), set an explicit list here:
+    # relay_events: [order_fill, order_exit]
     # Optional: hardcode the channel (less secure — prefer env):
     # chat_id: "-100xxxxxxxxxx"
     min_severity: "info"          # info | warning | critical
