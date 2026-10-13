@@ -79,6 +79,30 @@ def escape_mdv2(s: str) -> str:
     return "".join(out)
 
 
+def _normalize_chat_id(raw: Any) -> str:
+    """Normalize a Telegram channel reference to a Bot-API-acceptable form.
+
+    Accepts ``@channel``, ``channel``, ``t.me/channel``, ``https://t.me/channel``
+    or a numeric id (``-100...`` / ``123``). Returns ``@channel`` for usernames,
+    the bare id for numeric ids, or ``""`` when nothing usable is supplied.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    low = s.lower()
+    for pre in ("https://t.me/", "http://t.me/", "https://telegram.me/",
+                "http://telegram.me/", "t.me/", "telegram.me/"):
+        if low.startswith(pre):
+            s = s[len(pre):]
+            break
+    s = s.strip().lstrip("@").strip()
+    if not s:
+        return ""
+    if s.lstrip("-").isdigit():
+        return s
+    return "@" + s
+
+
 def format_event(event_type: str, payload: Dict[str, Any], ts: float) -> str:
     import datetime as _dt
     stamp = _dt.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -201,11 +225,12 @@ class _Sender:
         self.bucket = _TelegramBucket(rate_per_min=rate_per_min)
         self.q: queue.Queue[Optional[_Msg]] = queue.Queue(maxsize=queue_size)
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="tg-sender", daemon=True)
-        self._thread.start()
         self.sent = 0
         self.dropped = 0
         self.errors = 0
+        # Start the worker only after the counters exist (the thread reads them).
+        self._thread = threading.Thread(target=self._run, name="tg-sender", daemon=True)
+        self._thread.start()
 
     def enqueue(self, text: str, severity: str) -> bool:
         try:
@@ -282,24 +307,40 @@ class TelegramNotifier(Component):
 
         token_env = str(n.get("bot_token_env", "TELEGRAM_BOT_TOKEN"))
         chat_env = str(n.get("chat_id_env", "TELEGRAM_CHAT_ID"))
+        relay_env = str(n.get("relay_channel_env", "RELAY_CHANNEL"))
         self.token = cfg.secret(token_env)
         self.chat_id = n.get("chat_id") or cfg.secret(chat_env)
+        # Relay/aggregator channel — receives ONLY confirmed signals + outcomes.
+        self.relay_channel = n.get("relay_channel") or cfg.secret(relay_env)
+        self.relay_events = set(n.get("relay_events") or ["order_fill", "order_exit"])
 
+        rate = float(n.get("rate_per_min", 20.0))
+        qsize = int(n.get("queue_size", 500))
         self._sender: Optional[_Sender] = None
-        if self.enabled and self.token and self.chat_id:
-            self._sender = _Sender(
-                token=self.token,
-                chat_id=str(self.chat_id),
-                rate_per_min=float(n.get("rate_per_min", 20.0)),
-                queue_size=int(n.get("queue_size", 500)),
-            )
+        self._relay_sender: Optional[_Sender] = None
+        if self.enabled and self.token:
+            if self.chat_id:
+                self._sender = _Sender(
+                    token=self.token,
+                    chat_id=str(self.chat_id),
+                    rate_per_min=rate,
+                    queue_size=qsize,
+                )
+            relay_ref = _normalize_chat_id(self.relay_channel)
+            if relay_ref and relay_ref != _normalize_chat_id(self.chat_id):
+                self._relay_sender = _Sender(
+                    token=self.token,
+                    chat_id=relay_ref,
+                    rate_per_min=rate,
+                    queue_size=qsize,
+                )
 
     def start(self) -> None:
         self._running = True
         if not self.enabled:
             log.info("Telegram notifier disabled")
             return
-        if self._sender is None:
+        if self._sender is None and self._relay_sender is None:
             log.warning("Telegram notifier: missing bot_token or chat_id — inert")
             return
 
@@ -312,8 +353,12 @@ class TelegramNotifier(Component):
 
         self._send("🟢 *Cryptonaute online* — notifications active",
                    severity="info")
-        log.info("Telegram notifier online (chat=%s, events=%d)",
-                 str(self.chat_id)[:8] + "…", len(self.events))
+        self._send("🟢 *Cryptonaute online* — confirmed signals relay active",
+                   severity="info", relay=True)
+        log.info("Telegram notifier online (chat=%s, relay=%s, events=%d)",
+                 str(self.chat_id)[:8] + "…",
+                 _normalize_chat_id(self.relay_channel) or "-",
+                 len(self.events))
 
     def _on_any(self, ev: NormalizedEvent) -> None:
         try:
@@ -327,7 +372,7 @@ class TelegramNotifier(Component):
             self._on_event(ev)
 
     def _on_event(self, ev: NormalizedEvent) -> None:
-        if self._sender is None:
+        if self._sender is None and self._relay_sender is None:
             return
         if getattr(self.clock, "mode", "real") == "virtual" and not self.allow_in_replay:
             return
@@ -341,27 +386,43 @@ class TelegramNotifier(Component):
         if _SEVERITY_ORDER.get(sev, 0) < _SEVERITY_ORDER.get(self.min_severity, 0):
             return
         text = format_event(et, dict(ev.payload), float(ev.timestamp))
-        if self._sender.enqueue(text, sev):
-            self.metrics.inc("telegram_queued", event_type=et)
-        else:
-            self.metrics.inc("telegram_dropped", event_type=et)
-
-    def _send(self, text: str, severity: str = "info") -> None:
         if self._sender is not None:
-            self._sender.enqueue(text, severity)
+            if self._sender.enqueue(text, sev):
+                self.metrics.inc("telegram_queued", event_type=et)
+            else:
+                self.metrics.inc("telegram_dropped", event_type=et)
+        # Relay gets ONLY confirmed signals + outcomes (fills/exits).
+        if self._relay_sender is not None and et in self.relay_events:
+            if self._relay_sender.enqueue(text, sev):
+                self.metrics.inc("telegram_relay_queued", event_type=et)
+            else:
+                self.metrics.inc("telegram_relay_dropped", event_type=et)
+
+    def _send(self, text: str, severity: str = "info", relay: bool = False) -> None:
+        sender = self._relay_sender if relay else self._sender
+        if sender is not None:
+            sender.enqueue(text, severity)
 
     def stop(self) -> None:
         if self._sender is not None:
             self._send("🔴 *Cryptonaute offline* — notifications paused",
                        severity="info")
-            time.sleep(0.5)
-            self._sender.close()
+        if self._relay_sender is not None:
+            self._send("🔴 *Cryptonaute offline* — relay paused",
+                       severity="info", relay=True)
+        time.sleep(0.5)
+        for sender in (self._sender, self._relay_sender):
+            if sender is not None:
+                sender.close()
 
     def stats(self) -> Dict[str, int]:
-        if self._sender is None:
-            return {"sent": 0, "dropped": 0, "errors": 0}
+        s = self._sender
+        r = self._relay_sender
         return {
-            "sent": self._sender.sent,
-            "dropped": self._sender.dropped,
-            "errors": self._sender.errors,
+            "sent": s.sent if s else 0,
+            "dropped": s.dropped if s else 0,
+            "errors": s.errors if s else 0,
+            "relay_sent": r.sent if r else 0,
+            "relay_dropped": r.dropped if r else 0,
+            "relay_errors": r.errors if r else 0,
         }

@@ -4,6 +4,7 @@ import pytest
 
 from notifications.telegram import (
     escape_mdv2, format_event, _TelegramBucket, _Sender, TelegramNotifier,
+    _normalize_chat_id,
 )
 
 
@@ -204,3 +205,57 @@ def test_notifier_ignores_info_when_min_severity_warning(monkeypatch):
     assert len(captured) == 1
     assert "REJECT" in captured[0][0]
     n._sender.close()
+
+
+# ---------- Relay channel ------------------------------------------------- #
+
+@pytest.mark.parametrize("raw,expected", [
+    ("@Cryptonaute_Engager", "@Cryptonaute_Engager"),
+    ("Cryptonaute_Engager", "@Cryptonaute_Engager"),
+    ("t.me/Cryptonaute_Engager", "@Cryptonaute_Engager"),
+    ("https://t.me/Cryptonaute_Engager", "@Cryptonaute_Engager"),
+    ("-1001234567890", "-1001234567890"),
+    ("", ""),
+    (None, ""),
+])
+def test_normalize_chat_id(raw, expected):
+    assert _normalize_chat_id(raw) == expected
+
+
+def test_notifier_routes_only_confirmed_events_to_relay(monkeypatch):
+    from core.config import Config
+    from core.events import make_event
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "fake:token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "-100main")
+    monkeypatch.setenv("RELAY_CHANNEL", "Cryptonaute_Engager")
+    cfg = Config.load()
+    cfg.set("notifications.telegram.enabled", True)
+
+    n = TelegramNotifier(_bus(), cfg, _Clock(), _Metrics())
+    n.start()
+    assert n._sender is not None
+    assert n._relay_sender is not None
+    assert n._relay_sender.chat_id == "@Cryptonaute_Engager"
+
+    main, relay = [], []
+    n._sender.enqueue = lambda text, sev: (main.append(text) or True)
+    n._relay_sender.enqueue = lambda text, sev: (relay.append(text) or True)
+
+    # A proposal is not a confirmed outcome — main only.
+    n._on_event(make_event("order_proposal", "test",
+                           payload={"symbol": "EURUSD", "side": "buy",
+                                    "direction": 1.0, "qty": 1.0, "source": "t"},
+                           timestamp=1.0))
+    assert len(main) == 1 and relay == []
+
+    # A fill is a confirmed outcome — main AND relay.
+    n._on_event(make_event("order_fill", "test",
+                           payload={"symbol": "EURUSD", "side": "buy",
+                                    "filled_notional": 100.0, "price": 1.1,
+                                    "closed": True, "pnl": 1.0},
+                           timestamp=2.0))
+    assert len(main) == 2 and len(relay) == 1
+    assert "ORDER FILL" in relay[0]
+
+    n._sender.close()
+    n._relay_sender.close()

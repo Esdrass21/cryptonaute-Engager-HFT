@@ -625,21 +625,34 @@ def cmd_drift(args) -> int:
 
 
 def cmd_test_telegram(args) -> int:
+    import json as _json
     cfg = _load_cfg(args.config)
-    from notifications.telegram import TelegramNotifier
+    from notifications.telegram import TelegramNotifier, _normalize_chat_id, escape_mdv2
     from core.bus import MessageBus
     from core.config import Clock
     from core.metrics import Metrics
     bus = MessageBus(backend="memory")
     n = TelegramNotifier(bus, cfg, Clock(), Metrics())
     n.start()
-    if n._sender is None:
-        print("Telegram not configured — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env")
+
+    if n._sender is None and n._relay_sender is None:
+        print("Telegram not configured — set TELEGRAM_BOT_TOKEN and at least one "
+              "of TELEGRAM_CHAT_ID / RELAY_CHANNEL in .env")
         return 1
-    n._send("🧪 *Cryptonaute test message* — if you see this, the channel is wired correctly.",
-            severity="info")
-    import time as _t; _t.sleep(3.0)
-    print("stats:", n.stats())
+
+    if n._sender is not None:
+        n._sender.enqueue(escape_mdv2("Main channel test — wiring OK."), "info")
+        print(f"  main  -> {n.chat_id}")
+
+    if n._relay_sender is not None:
+        n._relay_sender.enqueue(
+            escape_mdv2("Relay channel test — confirmed signals will appear here."),
+            "info",
+        )
+        print(f"  relay -> {_normalize_chat_id(n.relay_channel)}")
+
+    import time as _t; _t.sleep(4.0)
+    print("\nstats:", _json.dumps(n.stats(), indent=2))
     n.stop()
     return 0
 
