@@ -32,6 +32,17 @@ from core.metrics_catalog import MetricKind, spec, validate_usage
 _STRICT = os.environ.get("CRYPTONAUTE_STRICT_METRICS", "0") == "1"
 
 
+def _metric_key(name: str, labels: Optional[Dict[str, str]] = None) -> str:
+    """Flatten a metric + labels into a single flat key: ``name{k=v,...}`` (sorted).
+
+    Unlabeled metrics keep their bare name so existing lookups are unchanged.
+    """
+    if not labels:
+        return name
+    inner = ",".join(f"{k}={labels[k]}" for k in sorted(labels))
+    return f"{name}{{{inner}}}"
+
+
 class Metrics:
     """Lightweight metrics registry. Drop-in whether or not Prometheus is present."""
 
@@ -46,16 +57,33 @@ class Metrics:
             start_http_server(port)
 
     # ---- counters -----------------------------------------------------
-    def inc(self, name: str, value: float = 1.0, labels: Optional[Dict[str, str]] = None) -> None:
+    def inc(self, name: str, value: float = 1.0,
+            labels: Optional[Dict[str, str]] = None, **extra_labels: str) -> None:
+        """Increment a counter.
+
+        Labels may be supplied as a dict (``labels={"k": "v"}``) or as keyword
+        arguments (``inc("m", release_id=rid, source="ff")``); both are merged.
+        Labeled counters are keyed ``name{k=v,...}`` (sorted) so the flat
+        snapshot stays deterministic and greppable.
+        """
+        merged: Dict[str, str] = {str(k): str(v) for k, v in (labels or {}).items()}
+        merged.update({str(k): str(v) for k, v in extra_labels.items()})
         # --- Phase 5: strict catalog validation (dev/CI) ---
         if _STRICT:
-            validate_usage(name, MetricKind.COUNTER, labels.keys() if labels else ())
+            validate_usage(name, MetricKind.COUNTER, merged.keys())
+        key = _metric_key(name, merged)
         with self._lock:
-            self._counters[name] = self._counters.get(name, 0.0) + value
-        if self._prom_enabled and name not in self._prom:
-            self._prom[name] = Counter(name, name, list(labels or {})) if labels else Counter(name, name)
+            self._counters[key] = self._counters.get(key, 0.0) + value
         if self._prom_enabled:
-            self._prom[name].inc(value)  # type: ignore[attr-defined]
+            counter = self._prom.get(name)
+            if counter is None:
+                counter = (Counter(name, name, list(sorted(merged))) if merged
+                           else Counter(name, name))
+                self._prom[name] = counter
+            if merged:
+                counter.labels(**merged).inc(value)  # type: ignore[attr-defined]
+            else:
+                counter.inc(value)  # type: ignore[attr-defined]
 
     # ---- gauges -------------------------------------------------------
     def set(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
