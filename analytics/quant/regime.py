@@ -39,6 +39,7 @@ class RegimeDetector(Component):
     def on_candle(self, ev) -> None:
         sym = ev.payload["symbol"]
         self._closes.setdefault(sym, []).append(ev.payload["close"])
+        self._rets.setdefault(sym, [])
         if len(self._closes[sym]) > self.lookback:
             self._closes[sym] = self._closes[sym][-self.lookback:]
         if len(self._closes[sym]) >= 20:

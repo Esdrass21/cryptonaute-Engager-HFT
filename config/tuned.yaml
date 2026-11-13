@@ -1,10 +1,10 @@
 strategy:
   composite:
-    tech_weight: 0.6667
-    news_weight: 0.1333
-    macro_weight: 0.0667
-    regime_weight: 0.1333
-    threshold: 0.45
+    tech_weight: 0.5652
+    news_weight: 0.2174
+    macro_weight: 0.0435
+    regime_weight: 0.1739
+    threshold: 0.65
   ev:
-    min_expectancy: 0.0
-  exit_flip_conviction: 0.25
+    min_expectancy: 0.02
+  exit_flip_conviction: 0.1

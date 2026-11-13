@@ -121,6 +121,40 @@ def test_crypto_feed_emits_from_mocked_ccxt(monkeypatch):
     assert "tick" in seen and "candle" in seen
 
 
+def test_crypto_feed_fails_over_without_mixing_exchange_events():
+    from data_ingestion.market_feeds.feeds import CryptoMarketFeed
+
+    cfg = Config.load()
+    cfg.set("symbols", ["BTCUSDT"])
+    cfg.set("data.market.crypto.exchanges", ["bybit", "kraken", "coinbase", "okx", "binance"])
+    feed = CryptoMarketFeed(MessageBus(), cfg, Clock(), Metrics())
+
+    class FailingExchange:
+        def fetch_ticker(self, pair):
+            raise RuntimeError("temporarily unavailable")
+
+    class WorkingExchange:
+        def fetch_ticker(self, pair):
+            assert pair == "BTC/USDT"
+            return {"bid": 60000.0, "ask": 60010.0, "last": 60005.0, "baseVolume": 12.5}
+
+        def fetch_ohlcv(self, pair, timeframe="1m", limit=1):
+            return [[0, 60000.0, 60100.0, 59900.0, 60005.0, 12.5]]
+
+    feed._exchange_clients = {
+        "bybit": FailingExchange(),
+        "kraken": WorkingExchange(),
+    }
+    seen = []
+    feed.bus.subscribe(EventType.TICK, lambda event: seen.append(event))
+    feed.bus.subscribe(EventType.CANDLE, lambda event: seen.append(event))
+    feed.run_once()
+
+    assert len(seen) == 2
+    assert {event.source for event in seen} == {"kraken"}
+    assert feed._active_exchange["BTCUSDT"] == 1
+
+
 def test_rss_news_feed_emits_from_mocked_feedparser(monkeypatch):
     """RSSNewsFeed emits NEWS events from a fake feedparser (no network)."""
     import types

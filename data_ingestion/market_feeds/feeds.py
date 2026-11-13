@@ -6,10 +6,10 @@ Backends selected by ``cfg.data.market.source``: ``sim`` (deterministic GBM, def
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import math
 import random
+import threading
 import time
 from typing import Dict, List, Optional
 
@@ -31,6 +31,7 @@ class MarketFeed(Component):
         super().__init__(bus, cfg, clock, metrics, name)
         self.symbols: List[str] = cfg.get("symbols", ["EURUSD"])
         self.timeframe: str = cfg.get("timeframe", "M5")
+        self._seq = 0
 
     def start(self) -> None:
         self._running = True
@@ -159,6 +160,14 @@ class SimMarketFeed(MarketFeed):
 
 
 class MT5MarketFeed(MarketFeed):
+    def __init__(self, bus, cfg, clock, metrics):
+        super().__init__(bus, cfg, clock, metrics, name="mt5.market")
+        self.interval = float(cfg.get("data.market.mt5.interval_s", 1.0))
+
+    def _map(self, sym: str) -> str:
+        mapping = self.cfg.get("data.market.mt5.symbol_map", {}) or {}
+        return mapping.get(sym, sym)
+
     def start(self) -> None:
         super().start()
         try:
@@ -169,21 +178,31 @@ class MT5MarketFeed(MarketFeed):
                 return
             self._mt5 = mt5
             for sym in self.symbols:
-                self._mt5.symbol_select(sym, True)
+                self._mt5.symbol_select(self._map(sym), True)
             log.info("MT5 feed connected")
-            asyncio.ensure_future(self._pump())
+            self._thread = threading.Thread(target=self._pump_loop, daemon=True)
+            self._thread.start()
         except Exception as exc:
             log.warning("MT5 feed unavailable: %s", exc)
 
-    async def _pump(self) -> None:
+    def stop(self) -> None:
+        super().stop()
+        thread = getattr(self, "_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2.0)
+
+    def _pump_loop(self) -> None:
         while self._running:
-            for sym in self.symbols:
-                t = self._mt5.symbol_info_tick(sym)
-                if t:
-                    self.emit(normalize_tick("mt5", sym, bid=t.bid, ask=t.ask, last=t.last,
-                                             volume=t.volume, time=float(t.time), sequence=self._seq))
-                    self._seq += 1
-            await asyncio.sleep(self.interval)
+            try:
+                for sym in self.symbols:
+                    t = self._mt5.symbol_info_tick(self._map(sym))
+                    if t:
+                        self.emit(normalize_tick("mt5", sym, bid=t.bid, ask=t.ask, last=t.last,
+                                                 volume=t.volume, time=float(t.time), sequence=self._seq))
+                        self._seq += 1
+            except Exception as exc:  # noqa: BLE001
+                log.warning("MT5 poll failed: %s", exc)
+            time.sleep(self.interval)
 
 
 class CryptoMarketFeed(MarketFeed):
@@ -202,11 +221,20 @@ class CryptoMarketFeed(MarketFeed):
     def __init__(self, bus, cfg, clock, metrics):
         super().__init__(bus, cfg, clock, metrics, name="crypto.market")
         self.interval = float(cfg.get("data.market.crypto.interval_s", 2.0))
-        self.exchange_id = str(cfg.get("execution.exchange", "binance")).lower()
+        configured_exchanges = cfg.get("data.market.crypto.exchanges", None)
+        if configured_exchanges is None:
+            configured_exchanges = [cfg.get("data.market.crypto.exchange",
+                                             cfg.get("execution.exchange", "bybit"))]
+        self.exchange_ids = list(dict.fromkeys(str(name).lower() for name in configured_exchanges))
+        if not self.exchange_ids:
+            self.exchange_ids = ["bybit"]
+        self.exchange_id = self.exchange_ids[0]
         self._seq = 0
         self._ex = None
-        # Normalize symbols to ccxt unified form: BTCUSDT -> BTC/USDT (best-effort).
+        self._exchange_clients = {}
+        self._active_exchange = {}
         self._pairs = {s: self._to_ccxt_symbol(s) for s in self.symbols}
+        self._exchange_symbol_overrides = cfg.get("data.market.crypto.symbol_map", {}) or {}
 
     @staticmethod
     def _to_ccxt_symbol(sym: str) -> Optional[str]:
@@ -223,41 +251,67 @@ class CryptoMarketFeed(MarketFeed):
         super().start()
         try:
             import ccxt
-
-            klass = getattr(ccxt, self.exchange_id, ccxt.binance)
-            self._ex = klass({"enableRateLimit": True})
-            active = [s for s, p in self._pairs.items() if p]
-            log.info("Crypto feed (%s) live for %s", self.exchange_id, active)
         except Exception as exc:  # noqa: BLE001
             log.warning("Crypto feed unavailable: %s", exc)
-            self._ex = None
+            return
+        for exchange_id in self.exchange_ids:
+            try:
+                klass = getattr(ccxt, exchange_id)
+                self._exchange_clients[exchange_id] = klass({"enableRateLimit": True})
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Crypto exchange %s unavailable: %s", exchange_id, exc)
+        self._ex = self._exchange_clients.get(self.exchange_id)
+        active = [s for s, p in self._pairs.items() if p]
+        log.info("Crypto feed failover order %s for %s", self.exchange_ids, active)
+
+    def _symbol_for_exchange(self, exchange_id: str, sym: str, pair: str) -> str:
+        return (self._exchange_symbol_overrides.get(exchange_id, {}).get(sym)
+                or self._exchange_symbol_overrides.get(exchange_id, {}).get(pair)
+                or pair)
 
     def _poll_symbol(self, sym: str, pair: str) -> None:
-        try:
-            t = self._ex.fetch_ticker(pair)
-            bid = float(t.get("bid") or t.get("last") or 0.0)
-            ask = float(t.get("ask") or t.get("last") or 0.0)
-            last = float(t.get("last") or (bid + ask) / 2)
-            vol = float(t.get("baseVolume") or 0.0)
-            self.emit(normalize_tick(self.exchange_id, sym, bid=bid, ask=ask, last=last,
-                                     volume=vol, time=self.clock.now(), sequence=self._seq))
-            ohlcv = self._ex.fetch_ohlcv(pair, timeframe="1m", limit=1)
-            if ohlcv:
-                o, h, l, c, v = ohlcv[-1][1], ohlcv[-1][2], ohlcv[-1][3], ohlcv[-1][4], ohlcv[-1][5]
-                self.emit(normalize_candle(self.exchange_id, sym, self.timeframe, open_=float(o),
-                                           high=float(h), low=float(l), close=float(c),
-                                           volume=float(v), time=self.clock.now(), sequence=self._seq))
-            if self.cfg.get("analytics.order_flow.enabled", False):
-                book = self._ex.fetch_order_book(pair, limit=5)
-                self.emit(normalize_order_book(self.exchange_id, sym, bids=book["bids"][:5],
-                                               asks=book["asks"][:5], time=self.clock.now(),
-                                               sequence=self._seq))
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Crypto poll failed for %s: %s", pair, exc)
+        start = self._active_exchange.get(sym, 0)
+        for offset in range(len(self.exchange_ids)):
+            index = (start + offset) % len(self.exchange_ids)
+            exchange_id = self.exchange_ids[index]
+            client = self._exchange_clients.get(exchange_id)
+            if client is None:
+                continue
+            market_pair = self._symbol_for_exchange(exchange_id, sym, pair)
+            try:
+                ticker = client.fetch_ticker(market_pair)
+                last = float(ticker.get("last") or 0.0)
+                if last <= 0.0:
+                    raise ValueError("ticker has no positive last price")
+                bid = float(ticker.get("bid") or last)
+                ask = float(ticker.get("ask") or last)
+                volume = float(ticker.get("baseVolume") or 0.0)
+                ohlcv = client.fetch_ohlcv(market_pair, timeframe="1m", limit=1)
+                if not ohlcv:
+                    raise ValueError("exchange returned no OHLCV candle")
+                row = ohlcv[-1]
+                book = None
+                if self.cfg.get("analytics.order_flow.enabled", False):
+                    book = client.fetch_order_book(market_pair, limit=5)
+                self._active_exchange[sym] = index
+                self.exchange_id = exchange_id
+                self.emit(normalize_tick(exchange_id, sym, bid=bid, ask=ask, last=last,
+                                         volume=volume, time=self.clock.now(), sequence=self._seq))
+                self.emit(normalize_candle(exchange_id, sym, self.timeframe, open_=float(row[1]),
+                                           high=float(row[2]), low=float(row[3]), close=float(row[4]),
+                                           volume=float(row[5]), time=self.clock.now(), sequence=self._seq))
+                if book is not None:
+                    self.emit(normalize_order_book(exchange_id, sym, bids=book["bids"][:5],
+                                                   asks=book["asks"][:5], time=self.clock.now(),
+                                                   sequence=self._seq))
+                return
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Crypto poll failed for %s on %s: %s", pair, exchange_id, exc)
+        log.error("No configured crypto exchange returned complete market data for %s", pair)
 
     def run_once(self) -> None:
-        if self._ex is None:
-            return
+        if not self._exchange_clients and self._ex is not None:
+            self._exchange_clients[self.exchange_id] = self._ex
         for sym, pair in self._pairs.items():
             if pair:
                 self._poll_symbol(sym, pair)
@@ -303,7 +357,7 @@ class HybridMarketFeed(MarketFeed):
             log.info("Hybrid feed: %s crypto for %s", self._crypto.exchange_id, self._crypto_syms)
 
     def run_once(self) -> None:
-        # MT5 sub-feed pumps itself via asyncio (its start() launches the event loop task);
+        # MT5 sub-feed pumps itself via its own background thread;
         # it has no synchronous run_once, so we only drive the crypto sub-feed here.
         if self._crypto:
             self._crypto.run_once()
@@ -329,4 +383,8 @@ def build_market_feed(bus: MessageBus, cfg: Config, clock: Clock, metrics: Metri
         return CryptoMarketFeed(bus, cfg, clock, metrics)
     if source == "hybrid":
         return HybridMarketFeed(bus, cfg, clock, metrics)
+    if source == "providers":
+        from .providers import build_provider_feed
+        return build_provider_feed(cfg.get("data.market.provider", "alpaca"),
+                                   bus, cfg, clock, metrics)
     return SimMarketFeed(bus, cfg, clock, metrics)

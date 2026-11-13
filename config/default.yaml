@@ -13,17 +13,200 @@ bus:
   backend: memory
   redis_url: null
 
-symbols: ["EURUSD", "XAUUSD", "BTCUSDT"]
+# Forex majors + crosses + commodities (metals, oil). MT5 broker names use
+# the "m" suffix — see data.market.mt5.symbol_map.
+symbols:
+  - EURUSD
+  - GBPUSD
+  - USDJPY
+  - USDCHF
+  - AUDUSD
+  - NZDUSD
+  - USDCAD
+  - EURGBP
+  - EURJPY
+  - GBPJPY
+  - AUDJPY
+  - EURAUD
+  - EURCAD
+  - EURNZD
+  - GBPAUD
+  - GBPCAD
+  - GBPCHF
+  - AUDCAD
+  - AUDCHF
+  - AUDNZD
+  - NZDCAD
+  - NZDJPY
+  - CADJPY
+  - CADCHF
+  - CHFJPY
+  - XAUUSD                  # gold
+  - XAGUSD                  # silver
+  - USOIL                   # WTI crude
+  - UKOIL                   # Brent crude
+  - BTCUSD                  # Bitcoin
 timeframe: M5
 
 data:
   market:
-    source: sim                 # sim | mt5 | crypto
+    source: mt5                 # sim | mt5 | crypto | hybrid | providers
+    mt5:
+      symbol_map:               # platform symbol -> broker symbol name
+        EURUSD: EURUSDm
+        GBPUSD: GBPUSDm
+        USDJPY: USDJPYm
+        USDCHF: USDCHFm
+        AUDUSD: AUDUSDm
+        NZDUSD: NZDUSDm
+        USDCAD: USDCADm
+        EURGBP: EURGBPm
+        EURJPY: EURJPYm
+        GBPJPY: GBPJPYm
+        AUDJPY: AUDJPYm
+        EURAUD: EURAUDm
+        EURCAD: EURCADm
+        EURNZD: EURNZDm
+        GBPAUD: GBPAUDm
+        GBPCAD: GBPCADm
+        GBPCHF: GBPCHFm
+        AUDCAD: AUDCADm
+        AUDCHF: AUDCHFm
+        AUDNZD: AUDNZDm
+        NZDCAD: NZDCADm
+        NZDJPY: NZDJPYm
+        CADJPY: CADJPYm
+        CADCHF: CADCHFm
+        CHFJPY: CHFJPYm
+        XAUUSD: XAUUSDm
+        XAGUSD: XAGUSDm
+        USOIL: USOILm
+        UKOIL: UKOILm
+        BTCUSD: BTCUSDm
+        BTCUSDT: BTCUSDTm
     sim:
       interval_s: 1.0
       candles_per_tick: 5
     crypto:
-      interval_s: 2.0           # ccxt REST poll cadence (public data, no key needed)
+      exchanges: [bybit, kraken, coinbase, okx, binance]
+      symbol_map:
+        kraken:
+          BTCUSDT: BTC/USD
+        coinbase:
+          BTCUSDT: BTC/USD
+      interval_s: 2.0           # ccxt REST poll cadence; public endpoints need no API key
+    provider: alpaca            # alpaca | alphavantage | twelvedata | finazon (needs key in .env)
+    providers:
+      interval_s: 30.0
+      alpaca:
+        symbol_map:             # platform symbol -> provider symbol (null = skip)
+          EURUSD: EUR/USD
+          GBPUSD: GBP/USD
+          USDJPY: USD/JPY
+          USDCHF: USD/CHF
+          AUDUSD: AUD/USD
+          NZDUSD: NZD/USD
+          USDCAD: USD/CAD
+          EURGBP: null          # crosses unsupported by Alpaca FX
+          EURJPY: null
+          GBPJPY: null
+          AUDJPY: null
+          EURAUD: null
+          EURCAD: null
+          EURNZD: null
+          GBPAUD: null
+          GBPCAD: null
+          GBPCHF: null
+          AUDCAD: null
+          AUDCHF: null
+          AUDNZD: null
+          NZDCAD: null
+          NZDJPY: null
+          CADJPY: null
+          CADCHF: null
+          CHFJPY: null
+          XAUUSD: null
+          XAGUSD: null
+          USOIL: null
+          UKOIL: null
+          BTCUSD: BTC/USD
+      alphavantage:
+        symbol_map:
+          EURUSD: EUR/USD
+          GBPUSD: GBP/USD
+          USDJPY: USD/JPY
+          USDCHF: USD/CHF
+          AUDUSD: AUD/USD
+          NZDUSD: NZD/USD
+          USDCAD: USD/CAD
+          XAUUSD: null          # metals need the premium endpoint
+          XAGUSD: null
+          USOIL: null
+          UKOIL: null
+          BTCUSD: BTC
+      twelvedata:
+        symbol_map:
+          EURUSD: EUR/USD
+          GBPUSD: GBP/USD
+          USDJPY: USD/JPY
+          USDCHF: USD/CHF
+          AUDUSD: AUD/USD
+          NZDUSD: NZD/USD
+          USDCAD: USD/CAD
+          EURGBP: EUR/GBP
+          EURJPY: EUR/JPY
+          GBPJPY: GBP/JPY
+          AUDJPY: AUD/JPY
+          EURAUD: EUR/AUD
+          EURCAD: EURCAD
+          EURNZD: EUR/NZD
+          GBPAUD: GBP/AUD
+          GBPCAD: GBP/CAD
+          GBPCHF: GBP/CHF
+          AUDCAD: AUD/CAD
+          AUDCHF: AUD/CHF
+          AUDNZD: AUD/NZD
+          NZDCAD: NZD/CAD
+          NZDJPY: NZD/JPY
+          CADJPY: CAD/JPY
+          CADCHF: CAD/CHF
+          CHFJPY: CHF/JPY
+          XAUUSD: XAU/USD
+          XAGUSD: XAG/USD
+          USOIL: null
+          UKOIL: null
+          BTCUSD: BTC/USD
+      finazon:
+        symbol_map:
+          EURUSD: EURUSD
+          GBPUSD: GBPUSD
+          USDJPY: USDJPY
+          USDCHF: USDCHF
+          AUDUSD: AUDUSD
+          NZDUSD: NZDUSD
+          USDCAD: USDCAD
+          EURGBP: EURGBP
+          EURJPY: EURJPY
+          GBPJPY: GBPJPY
+          AUDJPY: AUDJPY
+          EURAUD: EURAUD
+          EURCAD: EURCAD
+          EURNZD: EURNZD
+          GBPAUD: GBPAUD
+          GBPCAD: GBPCAD
+          GBPCHF: GBPCHF
+          AUDCAD: AUDCAD
+          AUDCHF: AUDCHF
+          AUDNZD: AUDNZD
+          NZDCAD: NZDCAD
+          NZDJPY: NZDJPY
+          CADJPY: CADJPY
+          CADCHF: CADCHF
+          CHFJPY: CHFJPY
+          XAUUSD: XAUUSD
+          XAGUSD: XAGUSD
+          USOIL: USOIL
+          UKOIL: UKOIL
   news:
     source: sim                 # sim | rss | factory
     sim:
@@ -31,6 +214,80 @@ data:
     rss:
       poll_every_n_ticks: 200   # re-poll live RSS feeds every N ticks
     rss_feeds: []               # empty -> built-in forexlive/investing/cointelegraph/fxstreet
+    bls:
+      race_mode: false
+      lookahead_s: 300.0
+      arm_before_s: 120.0
+      refresh_interval_s: 3600.0
+      race_timeout_ms: 500.0
+    fed:
+      enabled: true
+      poll_interval_s: 300.0
+    zillow:
+      enabled: true
+      poll_interval_s: 86400.0
+      us_region: "United States"
+    ism:
+      enabled: true
+      poll_interval_s: 86400.0
+    challenger:
+      enabled: true
+      poll_interval_s: 86400.0
+    forexfactory:
+      enabled: true
+      poll_interval_s: 3600.0
+      arm_before_s: 120.0
+      lookahead_s: 604800.0
+      countries: [USD, EUR, GBP, JPY]
+      min_impact: "High"
+    gdelt:
+      enabled: false
+      poll_interval_s: 300.0
+      max_records: 250
+      queries:
+        - id: "FED"
+          q: '(federal reserve OR FOMC OR powell) sourcelang:english'
+          symbols: [EURUSD, XAUUSD]
+        - id: "CPI"
+          q: '(inflation OR "consumer price index" OR CPI) sourcelang:english'
+          symbols: [EURUSD, XAUUSD]
+        - id: "GEO"
+          q: '(sanctions OR "central bank" OR "interest rate") sourcelang:english'
+          symbols: [XAUUSD, EURUSD]
+    # surprise stddev for normalizing surprises (configurable per release)
+    surprise_std:
+      NFP: 70.0                 # thousands
+      CPI_YOY: 0.15             # percentage points
+      CPI_MOM: 0.05
+      CORE_CPI_YOY: 0.15
+      UNEMPLOYMENT_RATE: 0.10
+      PPI_YOY: 0.20
+  fred:
+    series:
+      - ICSA
+      - CCSA
+      - ADPMNUSNERSA
+      - JTSHIR
+      - JTSJOL
+      - RSAFS
+      - PCEPI
+      - PCEPILFE
+      - DGS2
+      - DGS10
+      - DCOILWTICO
+      - GASREGW
+    poll_interval_s: 3600.0
+  consensus:
+    overrides: []
+  calendar:
+    # Optional explicit overrides — used when you know the exact time and consensus
+    overrides: []
+    #  - release_id: CPI_YOY
+    #    source: BLS
+    #    scheduled_ts: 1730000000.0
+    #    consensus: 0.3
+    #    prior: 0.2
+    #    units: percent
 
 analytics:
   regime_model: statistical
@@ -54,7 +311,7 @@ self_correction:
     backend: stub              # stub | mistral (needs MISTRAL_API_KEY)
 
 strategy:
-  enabled: ["ma_cross", "rsi_mean_reversion"]
+  enabled: ["tsmom", "noise_band"]
   composite:
     threshold: 0.55
     tech_weight: 0.45
@@ -63,6 +320,40 @@ strategy:
     regime_weight: 0.10
     of_weight: 0.05
   exit_flip_conviction: 0.15
+  noise_band:
+    enabled: true
+    lookback: 96                # rolling window (candles) for the noise sigma (tuned)
+    k: 3.0                      # tighter band in sigmas (filters retail spread on high-trend pairs)
+    confirm_n: 2                # consecutive closes beyond band required to enter
+    min_bars: 30                # warm-up before any decision
+    min_band: 0.00005           # floor for the band (prevents dead-market micro-trades)
+    position_pct: 0.5
+    sl_mult: 2.0                # SL = sl_mult * band (in return space)
+    tp_mult: 4.0                # TP = tp_mult * band
+    max_holding_s: 14400.0
+    cooldown_s: 1800.0
+    max_concurrent: 1
+    symbols:
+      - BTCUSD                  # Sharpe 2.20 @ 1 bps, net return +4.08%
+      - EURUSD
+      - USDCAD
+      - USDJPY
+  tsmom:
+    enabled: true
+    lookbacks: [1440]               # 5-day lookback (top performer in strategy_lab on MT5)
+    rebalance_s: 86400.0           # once per day (lab-validated discrete daily rebalance)
+    vol_win: 288                   # rolling window for the ex-ante vol estimator
+    vol_target: 0.5                # annualized vol targeted per position
+    max_leverage: 1.0
+    min_bars: 1441                 # warm-up: 5d lookback
+    symbols:
+      - USDCAD
+      - EURUSD
+      - EURGBP
+      - USDJPY
+      - GBPJPY
+      - USOIL
+      - BTCUSD
   ev:
     min_expected_value: 0.2
     min_confidence: 0.6
@@ -171,84 +462,6 @@ audit:
   path: data/audit.jsonl
   fsync: true
 
-# --- Phase 6 — macro feeds + nowcasts ---------------------------------- #
-data:
-  calendar:
-    # Optional explicit overrides — used when you know the exact time and consensus
-    overrides: []
-    #  - release_id: CPI_YOY
-    #    source: BLS
-    #    scheduled_ts: 1730000000.0
-    #    consensus: 0.3
-    #    prior: 0.2
-    #    units: percent
-  news:
-    bls:
-      race_mode: false
-      lookahead_s: 300.0
-      arm_before_s: 120.0
-      refresh_interval_s: 3600.0
-      race_timeout_ms: 500.0
-    fed:
-      enabled: true
-      poll_interval_s: 300.0
-    zillow:
-      enabled: true
-      poll_interval_s: 86400.0
-      us_region: "United States"
-    ism:
-      enabled: true
-      poll_interval_s: 86400.0
-    challenger:
-      enabled: true
-      poll_interval_s: 86400.0
-    forexfactory:
-      enabled: true
-      poll_interval_s: 3600.0
-      arm_before_s: 120.0
-      lookahead_s: 604800.0
-      countries: [USD, EUR, GBP, JPY]
-      min_impact: "High"
-    gdelt:
-      enabled: false
-      poll_interval_s: 300.0
-      max_records: 250
-      queries:
-        - id: "FED"
-          q: '(federal reserve OR FOMC OR powell) sourcelang:english'
-          symbols: [EURUSD, BTCUSDT]
-        - id: "CPI"
-          q: '(inflation OR "consumer price index" OR CPI) sourcelang:english'
-          symbols: [EURUSD]
-        - id: "GEO"
-          q: '(sanctions OR "central bank" OR "interest rate") sourcelang:english'
-          symbols: [XAUUSD, BTCUSDT]
-
-    # surprise stddev for normalizing surprises (configurable per release)
-    surprise_std:
-      NFP: 70.0                 # thousands
-      CPI_YOY: 0.15             # percentage points
-      CPI_MOM: 0.05
-      CORE_CPI_YOY: 0.15
-      UNEMPLOYMENT_RATE: 0.10
-      PPI_YOY: 0.20
-  fred:
-    series:
-      - ICSA
-      - CCSA
-      - ADPMNUSNERSA
-      - JTSHIR
-      - JTSJOL
-      - RSAFS
-      - PCEPI
-      - PCEPILFE
-      - DGS2
-      - DGS10
-      - DCOILWTICO
-      - GASREGW
-    poll_interval_s: 3600.0
-  consensus:
-    overrides: []
 
 nowcast:
   nfp:

@@ -164,6 +164,10 @@ class Orchestrator:
         self.gdelt = GDELTFeed(bus, c, clk, m)
         self.nowcast_cpi = CPINowcast(bus, c, clk, m)
         self.release_drift = ReleaseDriftStrategy(bus, c, clk, m)
+        from strategy_engine.noise_band import NoiseBandStrategy
+        self.noise_band = NoiseBandStrategy(bus, c, clk, m)
+        from strategy_engine.tsmom import TSMOMStrategy
+        self.tsmom = TSMOMStrategy(bus, c, clk, m)
         # Layer 2
         self.quant = QuantAnalytics(bus, c, clk, m)
         self.regime = RegimeDetector(bus, c, clk, m)
@@ -193,7 +197,7 @@ class Orchestrator:
         self.components = [
             self.market, self.news, self.bls, self.fred, self.consensus, self.nowcast_nfp,
             self.fed, self.zillow, self.ism, self.challenger, self.forexfactory, self.gdelt,
-            self.nowcast_cpi, self.release_drift,
+            self.nowcast_cpi, self.release_drift, self.noise_band, self.tsmom,
             self.quant, self.regime, self.macro,
             self.order_flow, self.nlp, self.review, self.anomaly,
             self.fusion, self.ev, self.fsm, self.execution,
@@ -555,7 +559,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--live", action="store_true")
     ap.add_argument("--broker", default="mt5", choices=["mt5", "crypto"])
     ap.add_argument("--exchange", default=None)
-    ap.add_argument("--market", default=None, choices=["sim", "mt5", "crypto", "hybrid"])
+    ap.add_argument("--market", default=None, choices=["sim", "mt5", "crypto", "hybrid", "providers"])
     ap.add_argument("--news", default=None, choices=["sim", "rss", "factory"])
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--generate", metavar="OUT", default=None)

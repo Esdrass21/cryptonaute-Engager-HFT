@@ -33,6 +33,8 @@ from risk_management.portfolio_optimizer import PortfolioOptimizer
 from risk_management.veto_service import RiskVetoService
 from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
 from strategy_engine.expected_value import ExpectedValueEngine
+from strategy_engine.noise_band import NoiseBandStrategy
+from strategy_engine.tsmom import TSMOMStrategy
 from strategy_engine.signal_fusion import SignalFusion
 from strategy_engine.state_machine import StrategyOrchestrator
 
@@ -71,6 +73,8 @@ class ReplayHarness:
                                      enabled=c.get("analytics.order_flow.enabled", False))
         self.nlp = NewsScorer(self.bus, c, self.clock, self.metrics)
         self.fusion = SignalFusion(self.bus, c, self.clock, self.metrics)
+        self.noise_band = NoiseBandStrategy(self.bus, c, self.clock, self.metrics)
+        self.tsmom = TSMOMStrategy(self.bus, c, self.clock, self.metrics)
         self.ev = ExpectedValueEngine(self.bus, c, self.clock, self.metrics)
 
         # L4/L5/L6 all share the same KeyManager.
@@ -90,7 +94,7 @@ class ReplayHarness:
 
         self.components = [
             self.market_quant, self.regime, self.macro, self.of, self.nlp,
-            self.fusion, self.ev, self.fsm, self.veto, self.portfolio,
+            self.fusion, self.noise_band, self.tsmom, self.ev, self.fsm, self.veto, self.portfolio,
             self.circuit, self.execution, self.review, self.anomaly,
         ]
 
@@ -127,6 +131,10 @@ class ReplayHarness:
             ev = self.bus.step_replay()
             if ev is None:
                 break
+            # Advance the virtual clock to the event's own timestamp so time-based
+            # logic (cooldowns, holding-time exits, TTLs) works exactly as in live.
+            if ev.timestamp and ev.timestamp >= self.clock.now():
+                self.clock.set_virtual(float(ev.timestamp))
             processed += 1
             if id(ev) in recorded_ids:
                 bal = float(self.broker.get_account_state().get("balance", 0.0))

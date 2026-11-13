@@ -1,29 +1,407 @@
 {
   "best_params": {
-    "ev_min": 0.0,
-    "exit_flip": 0.25,
+    "ev_min": 0.02,
+    "exit_flip": 0.1,
     "macro": 0.05,
-    "news": 0.1,
-    "regime": 0.1,
-    "tech": 0.5,
-    "threshold": 0.45
+    "news": 0.25,
+    "regime": 0.2,
+    "tech": 0.65,
+    "threshold": 0.65
   },
-  "dsr": 0.007267064715944849,
+  "dsr": 0.9598246994307343,
   "is_frac": 0.8,
-  "is_sharpe": 0.022183912735402846,
-  "n_trials": 24,
+  "is_sharpe": 0.020281444610242984,
+  "n_trials": 36,
   "oos_dd": 0.0,
-  "oos_events": 508,
-  "oos_net": 0.11289445755573979,
-  "oos_sharpe": 0.04436782547080568,
-  "oos_trades": 2,
-  "pbo": 0.5454545454545454,
-  "psr_vs_zero": 0.9771434362401508,
+  "oos_events": 4928,
+  "oos_net": 12.767394222213625,
+  "oos_sharpe": 0.024253924468768125,
+  "oos_trades": 34,
+  "pbo": 0.5272727272727272,
+  "psr_vs_zero": 0.9999311989931476,
   "results": [
     {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 28.67736334496294,
+      "is_sharpe": 0.020281444610242984,
+      "max_dd_pct": 0.00616670681334358,
+      "net_pnl": 21.291826136866803,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.1,
+        "macro": 0.05,
+        "news": 0.25,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 21.291826136866803,
+      "trades": 112,
+      "win_rate": 0.5038021118101541
+    },
+    {
+      "is_sharpe": 0.010404765895689857,
+      "max_dd_pct": 0.04247349627515644,
+      "net_pnl": 15.994731569791838,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.25,
+        "macro": 0.15,
+        "news": 0.4,
+        "regime": 0.1,
+        "tech": 0.65,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 15.994731569791838,
+      "trades": 152,
+      "win_rate": 0.5021045699433934
+    },
+    {
+      "is_sharpe": 0.010299188658203675,
+      "max_dd_pct": 0.03223201675014545,
+      "net_pnl": 15.263623026625282,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.1,
+        "macro": 0.05,
+        "news": 0.25,
+        "regime": 0.1,
+        "tech": 0.8,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 15.263623026625282,
+      "trades": 162,
+      "win_rate": 0.5018843979045214
+    },
+    {
+      "is_sharpe": 0.010238506979054526,
+      "max_dd_pct": 0.017293423766041798,
+      "net_pnl": 15.034266738799488,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.1,
+        "macro": 0.25,
+        "news": 0.25,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 15.034266738799488,
+      "trades": 168,
+      "win_rate": 0.5017897936593807
+    },
+    {
+      "is_sharpe": 0.010238506979054526,
+      "max_dd_pct": 0.017293423766041798,
+      "net_pnl": 15.034266738799488,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.1,
+        "macro": 0.15,
+        "news": 0.25,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 15.034266738799488,
+      "trades": 168,
+      "win_rate": 0.5017897936593807
+    },
+    {
+      "is_sharpe": 0.010238506979054526,
+      "max_dd_pct": 0.017293423766041798,
+      "net_pnl": 15.034266738799488,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.1,
+        "macro": 0.05,
+        "news": 0.1,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 15.034266738799488,
+      "trades": 168,
+      "win_rate": 0.5017897936593807
+    },
+    {
+      "is_sharpe": 0.013186721305110624,
+      "max_dd_pct": 0.04056218531926594,
+      "net_pnl": 14.373214668699802,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.25,
+        "macro": 0.05,
+        "news": 0.4,
+        "regime": 0.2,
+        "tech": 0.5,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 14.373214668699802,
+      "trades": 100,
+      "win_rate": 0.5028746429337394
+    },
+    {
+      "is_sharpe": 0.013186721305110624,
+      "max_dd_pct": 0.04056218531926594,
+      "net_pnl": 14.373214668699802,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.25,
+        "macro": 0.05,
+        "news": 0.1,
+        "regime": 0.2,
+        "tech": 0.5,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 14.373214668699802,
+      "trades": 100,
+      "win_rate": 0.5028746429337394
+    },
+    {
+      "is_sharpe": 0.008813108850353045,
+      "max_dd_pct": 0.04017979485808339,
+      "net_pnl": 13.511765435216148,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.25,
+        "macro": 0.05,
+        "news": 0.1,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 13.511765435216148,
+      "trades": 164,
+      "win_rate": 0.5016477762725872
+    },
+    {
+      "is_sharpe": 0.00845219867979191,
+      "max_dd_pct": 0.05077209736747369,
+      "net_pnl": 12.850944485155196,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.25,
+        "macro": 0.05,
+        "news": 0.1,
+        "regime": 0.1,
+        "tech": 0.8,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 12.850944485155196,
+      "trades": 158,
+      "win_rate": 0.5016267018335637
+    },
+    {
+      "is_sharpe": 0.00845219867979191,
+      "max_dd_pct": 0.05077209736747369,
+      "net_pnl": 12.850944485155196,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.25,
+        "macro": 0.15,
+        "news": 0.4,
+        "regime": 0.1,
+        "tech": 0.8,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 12.850944485155196,
+      "trades": 158,
+      "win_rate": 0.5016267018335637
+    },
+    {
+      "is_sharpe": 0.007803629683455083,
+      "max_dd_pct": 0.049427713177701976,
+      "net_pnl": 11.73806574203445,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.4,
+        "macro": 0.25,
+        "news": 0.4,
+        "regime": 0.1,
+        "tech": 0.65,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 11.73806574203445,
+      "trades": 138,
+      "win_rate": 0.5017011689481207
+    },
+    {
+      "is_sharpe": 0.007482065411689907,
+      "max_dd_pct": 0.055621833755148745,
+      "net_pnl": 11.349304103114264,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.1,
+        "macro": 0.05,
+        "news": 0.25,
+        "regime": 0.2,
+        "tech": 0.8,
+        "threshold": 0.55
+      },
+      "passed": true,
+      "score": 11.349304103114264,
+      "trades": 192,
+      "win_rate": 0.5011822191774076
+    },
+    {
+      "is_sharpe": 0.005978207598829877,
+      "max_dd_pct": 0.011383384001263944,
+      "net_pnl": 11.023941244731759,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.1,
+        "macro": 0.15,
+        "news": 0.4,
+        "regime": 0.0,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 11.023941244731759,
+      "trades": 298,
+      "win_rate": 0.5007398618285054
+    },
+    {
+      "is_sharpe": 0.006156443286287663,
+      "max_dd_pct": 0.035078775465639894,
+      "net_pnl": 10.343629917864746,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.1,
+        "macro": 0.05,
+        "news": 0.25,
+        "regime": 0.1,
+        "tech": 0.8,
+        "threshold": 0.55
+      },
+      "passed": true,
+      "score": 10.343629917864746,
+      "trades": 218,
+      "win_rate": 0.5009489568731985
+    },
+    {
+      "is_sharpe": 0.005352520604800242,
+      "max_dd_pct": 0.03745277398642374,
+      "net_pnl": 9.461977981261953,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.25,
+        "macro": 0.05,
+        "news": 0.4,
+        "regime": 0.0,
+        "tech": 0.8,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 9.461977981261953,
+      "trades": 214,
+      "win_rate": 0.5008842970075945
+    },
+    {
+      "is_sharpe": 0.005460445336291127,
+      "max_dd_pct": 0.058194527958215135,
+      "net_pnl": 9.193362016156243,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.1,
+        "macro": 0.15,
+        "news": 0.25,
+        "regime": 0.0,
+        "tech": 0.8,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 9.193362016156243,
+      "trades": 214,
+      "win_rate": 0.5008591927117902
+    },
+    {
+      "is_sharpe": 0.005522217283452882,
+      "max_dd_pct": 0.03146429222691788,
+      "net_pnl": 9.149455578042762,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.1,
+        "macro": 0.25,
+        "news": 0.4,
+        "regime": 0.1,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 9.149455578042762,
+      "trades": 224,
+      "win_rate": 0.5008169156766109
+    },
+    {
+      "is_sharpe": 0.008297348713946355,
+      "max_dd_pct": 0.028132497212851285,
+      "net_pnl": 9.072510586263888,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.4,
+        "macro": 0.25,
+        "news": 0.25,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 9.072510586263888,
+      "trades": 104,
+      "win_rate": 0.5017447135742812
+    },
+    {
+      "is_sharpe": 0.005449859836492435,
+      "max_dd_pct": 0.031463730896749094,
+      "net_pnl": 9.034989163816135,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.1,
+        "macro": 0.25,
+        "news": 0.25,
+        "regime": 0.1,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 9.034989163816135,
+      "trades": 224,
+      "win_rate": 0.5008066954610549
+    },
+    {
+      "is_sharpe": 0.004863996693744038,
+      "max_dd_pct": 0.035510705369885015,
+      "net_pnl": 8.647940685916183,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.25,
+        "macro": 0.15,
+        "news": 0.4,
+        "regime": 0.1,
+        "tech": 0.5,
+        "threshold": 0.55
+      },
+      "passed": true,
+      "score": 8.647940685916183,
+      "trades": 196,
+      "win_rate": 0.5008824429271342
+    },
+    {
+      "is_sharpe": 0.004863996693744038,
+      "max_dd_pct": 0.035510705369885015,
+      "net_pnl": 8.647940685916183,
       "params": {
         "ev_min": 0.0,
         "exit_flip": 0.25,
@@ -34,14 +412,32 @@
         "threshold": 0.45
       },
       "passed": true,
-      "score": 28.67736334496294,
-      "trades": 2,
-      "win_rate": 0.7867736334467617
+      "score": 8.647940685916183,
+      "trades": 196,
+      "win_rate": 0.5008824429271342
     },
     {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 28.67736334496294,
+      "is_sharpe": 0.004959692102550583,
+      "max_dd_pct": 0.046715870162995096,
+      "net_pnl": 7.819398941996042,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.4,
+        "macro": 0.25,
+        "news": 0.4,
+        "regime": 0.2,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": true,
+      "score": 7.819398941996042,
+      "trades": 150,
+      "win_rate": 0.5010425865255993
+    },
+    {
+      "is_sharpe": 0.00423244187174561,
+      "max_dd_pct": 0.05722505035642106,
+      "net_pnl": 7.085393444394867,
       "params": {
         "ev_min": 0.0,
         "exit_flip": 0.1,
@@ -52,122 +448,68 @@
         "threshold": 0.55
       },
       "passed": true,
-      "score": 28.67736334496294,
-      "trades": 2,
-      "win_rate": 0.7867736334467617
+      "score": 7.085393444394867,
+      "trades": 208,
+      "win_rate": 0.5006812878311917
     },
     {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 27.276489871272133,
-      "params": {
-        "ev_min": 0.0,
-        "exit_flip": 0.4,
-        "macro": 0.15,
-        "news": 0.1,
-        "regime": 0.2,
-        "tech": 0.5,
-        "threshold": 0.55
-      },
-      "passed": true,
-      "score": 27.276489871272133,
-      "trades": 2,
-      "win_rate": 0.7727648987099937
-    },
-    {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 27.276489871272133,
-      "params": {
-        "ev_min": 0.0,
-        "exit_flip": 0.1,
-        "macro": 0.25,
-        "news": 0.25,
-        "regime": 0.2,
-        "tech": 0.65,
-        "threshold": 0.45
-      },
-      "passed": true,
-      "score": 27.276489871272133,
-      "trades": 2,
-      "win_rate": 0.7727648987099937
-    },
-    {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 27.276489871272133,
+      "is_sharpe": 0.003128754624699205,
+      "max_dd_pct": 0.05196566025160111,
+      "net_pnl": 5.308774206541784,
       "params": {
         "ev_min": 0.05,
-        "exit_flip": 0.1,
-        "macro": 0.15,
-        "news": 0.25,
-        "regime": 0.2,
-        "tech": 0.65,
-        "threshold": 0.45
-      },
-      "passed": true,
-      "score": 27.276489871272133,
-      "trades": 2,
-      "win_rate": 0.7727648987099937
-    },
-    {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 27.276489871272133,
-      "params": {
-        "ev_min": 0.05,
-        "exit_flip": 0.1,
+        "exit_flip": 0.25,
         "macro": 0.05,
         "news": 0.25,
-        "regime": 0.2,
+        "regime": 0.1,
         "tech": 0.8,
         "threshold": 0.55
       },
       "passed": true,
-      "score": 27.276489871272133,
-      "trades": 2,
-      "win_rate": 0.7727648987099937
+      "score": 5.308774206541784,
+      "trades": 164,
+      "win_rate": 0.5006474114886026
     },
     {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 27.276489871272133,
+      "is_sharpe": 0.002991838416020956,
+      "max_dd_pct": 0.0606356565167814,
+      "net_pnl": 5.058134473454629,
       "params": {
-        "ev_min": 0.05,
+        "ev_min": 0.02,
         "exit_flip": 0.4,
-        "macro": 0.25,
-        "news": 0.4,
-        "regime": 0.2,
-        "tech": 0.65,
-        "threshold": 0.45
-      },
-      "passed": true,
-      "score": 27.276489871272133,
-      "trades": 2,
-      "win_rate": 0.7727648987099937
-    },
-    {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 27.276489871272133,
-      "params": {
-        "ev_min": 0.05,
-        "exit_flip": 0.1,
-        "macro": 0.05,
+        "macro": 0.15,
         "news": 0.1,
-        "regime": 0.2,
-        "tech": 0.65,
-        "threshold": 0.45
+        "regime": 0.0,
+        "tech": 0.8,
+        "threshold": 0.65
       },
       "passed": true,
-      "score": 27.276489871272133,
-      "trades": 2,
-      "win_rate": 0.7727648987099937
+      "score": 5.058134473454629,
+      "trades": 200,
+      "win_rate": 0.5005058134473455
     },
     {
-      "is_sharpe": 0.022183912735402846,
-      "max_dd_pct": 0.0,
-      "net_pnl": 24.530001665105374,
+      "is_sharpe": 0.002991838416020956,
+      "max_dd_pct": 0.0606356565167814,
+      "net_pnl": 5.058134473454629,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.4,
+        "macro": 0.15,
+        "news": 0.4,
+        "regime": 0.0,
+        "tech": 0.5,
+        "threshold": 0.65
+      },
+      "passed": true,
+      "score": 5.058134473454629,
+      "trades": 200,
+      "win_rate": 0.5005058134473455
+    },
+    {
+      "is_sharpe": 0.0021157391112886295,
+      "max_dd_pct": 0.056464903896163335,
+      "net_pnl": 2.4405337967855303,
       "params": {
         "ev_min": 0.02,
         "exit_flip": 0.4,
@@ -178,306 +520,192 @@
         "threshold": 0.65
       },
       "passed": true,
-      "score": 24.530001665105374,
-      "trades": 2,
-      "win_rate": 0.7453000166486008
+      "score": 2.4405337967855303,
+      "trades": 128,
+      "win_rate": 0.5003813334057476
     },
     {
-      "is_sharpe": 0.013445661569026351,
-      "max_dd_pct": 0.0,
-      "net_pnl": 18.426490625548468,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.25,
-        "macro": 0.15,
-        "news": 0.4,
-        "regime": 0.1,
-        "tech": 0.5,
-        "threshold": 0.55
-      },
-      "passed": true,
-      "score": 18.426490625548468,
-      "trades": 4,
-      "win_rate": 0.5921324531272817
-    },
-    {
-      "is_sharpe": 0.0061745275006973525,
-      "max_dd_pct": 0.0,
-      "net_pnl": 8.840038970552996,
-      "params": {
-        "ev_min": 0.05,
-        "exit_flip": 0.1,
-        "macro": 0.25,
-        "news": 0.4,
-        "regime": 0.1,
-        "tech": 0.65,
-        "threshold": 0.45
-      },
-      "passed": true,
-      "score": 8.840038970552996,
-      "trades": 6,
-      "win_rate": 0.5294667965684118
-    },
-    {
-      "is_sharpe": -0.0054165788636249095,
-      "max_dd_pct": 0.12310700005042235,
-      "net_pnl": -12.310700005042236,
+      "is_sharpe": -0.00041763498888429493,
+      "max_dd_pct": 0.08730901910994589,
+      "net_pnl": -0.5325321602504118,
       "params": {
         "ev_min": 0.0,
         "exit_flip": 0.4,
         "macro": 0.15,
         "news": 0.1,
-        "regime": 0.1,
-        "tech": 0.8,
-        "threshold": 0.45
-      },
-      "passed": false,
-      "score": -12.310700005042236,
-      "trades": 4,
-      "win_rate": 0.4384464999750966
-    },
-    {
-      "is_sharpe": -0.00786630841299494,
-      "max_dd_pct": 0.2970627295345366,
-      "net_pnl": -29.706272953453663,
-      "params": {
-        "ev_min": 0.05,
-        "exit_flip": 0.4,
-        "macro": 0.25,
-        "news": 0.25,
-        "regime": 0.0,
-        "tech": 0.65,
-        "threshold": 0.45
-      },
-      "passed": false,
-      "score": -29.706272953453663,
-      "trades": 12,
-      "win_rate": 0.45048954507765976
-    },
-    {
-      "is_sharpe": -0.022183912735402846,
-      "max_dd_pct": 0.39647831821323054,
-      "net_pnl": -39.64783182132305,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.4,
-        "macro": 0.15,
-        "news": 0.1,
-        "regime": 0.0,
-        "tech": 0.8,
-        "threshold": 0.65
-      },
-      "passed": false,
-      "score": -39.64783182132305,
-      "trades": 2,
-      "win_rate": 0.10352168179073429
-    },
-    {
-      "is_sharpe": -0.047545909447401905,
-      "max_dd_pct": 0.9167174042869555,
-      "net_pnl": -91.67174042869556,
-      "params": {
-        "ev_min": 0.0,
-        "exit_flip": 0.25,
-        "macro": 0.25,
-        "news": 0.4,
-        "regime": 0.0,
-        "tech": 0.8,
-        "threshold": 0.55
-      },
-      "passed": false,
-      "score": -91.67174042869556,
-      "trades": 12,
-      "win_rate": 0.3472137659524287
-    },
-    {
-      "is_sharpe": -0.047545909447401905,
-      "max_dd_pct": 0.9167174042869555,
-      "net_pnl": -91.67174042869556,
-      "params": {
-        "ev_min": 0.0,
-        "exit_flip": 0.25,
-        "macro": 0.25,
-        "news": 0.25,
-        "regime": 0.0,
-        "tech": 0.65,
-        "threshold": 0.45
-      },
-      "passed": false,
-      "score": -91.67174042869556,
-      "trades": 12,
-      "win_rate": 0.3472137659524287
-    },
-    {
-      "is_sharpe": -0.047545909447401905,
-      "max_dd_pct": 0.9167174042869555,
-      "net_pnl": -91.67174042869556,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.25,
-        "macro": 0.15,
-        "news": 0.25,
-        "regime": 0.0,
-        "tech": 0.8,
-        "threshold": 0.55
-      },
-      "passed": false,
-      "score": -91.67174042869556,
-      "trades": 12,
-      "win_rate": 0.3472137659524287
-    },
-    {
-      "is_sharpe": -0.047545909447401905,
-      "max_dd_pct": 0.9167174042869555,
-      "net_pnl": -91.67174042869556,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.25,
-        "macro": 0.15,
-        "news": 0.4,
-        "regime": 0.0,
-        "tech": 0.65,
-        "threshold": 0.55
-      },
-      "passed": false,
-      "score": -91.67174042869556,
-      "trades": 12,
-      "win_rate": 0.3472137659524287
-    },
-    {
-      "is_sharpe": 0.0,
-      "max_dd_pct": 0.0,
-      "net_pnl": 0.0,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.25,
-        "macro": 0.05,
-        "news": 0.1,
-        "regime": 0.1,
-        "tech": 0.8,
-        "threshold": 0.65
-      },
-      "passed": false,
-      "score": -500.0,
-      "trades": 0,
-      "win_rate": 0.0
-    },
-    {
-      "is_sharpe": 0.0,
-      "max_dd_pct": 0.0,
-      "net_pnl": 0.0,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.1,
-        "macro": 0.05,
-        "news": 0.25,
-        "regime": 0.1,
-        "tech": 0.8,
-        "threshold": 0.65
-      },
-      "passed": false,
-      "score": -500.0,
-      "trades": 0,
-      "win_rate": 0.0
-    },
-    {
-      "is_sharpe": 0.0,
-      "max_dd_pct": 0.0,
-      "net_pnl": 0.0,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.25,
-        "macro": 0.15,
-        "news": 0.4,
-        "regime": 0.1,
-        "tech": 0.8,
-        "threshold": 0.65
-      },
-      "passed": false,
-      "score": -500.0,
-      "trades": 0,
-      "win_rate": 0.0
-    },
-    {
-      "is_sharpe": 0.0,
-      "max_dd_pct": 0.0,
-      "net_pnl": 0.0,
-      "params": {
-        "ev_min": 0.02,
-        "exit_flip": 0.1,
-        "macro": 0.05,
-        "news": 0.25,
-        "regime": 0.2,
-        "tech": 0.65,
-        "threshold": 0.65
-      },
-      "passed": false,
-      "score": -500.0,
-      "trades": 0,
-      "win_rate": 0.0
-    },
-    {
-      "is_sharpe": 0.0,
-      "max_dd_pct": 0.0,
-      "net_pnl": 0.0,
-      "params": {
-        "ev_min": 0.05,
-        "exit_flip": 0.25,
-        "macro": 0.05,
-        "news": 0.4,
         "regime": 0.2,
         "tech": 0.5,
-        "threshold": 0.65
+        "threshold": 0.55
       },
       "passed": false,
-      "score": -500.0,
-      "trades": 0,
-      "win_rate": 0.0
+      "score": -0.5325321602504118,
+      "trades": 122,
+      "win_rate": 0.4999126996458606
     },
     {
-      "is_sharpe": 0.0,
-      "max_dd_pct": 0.0,
-      "net_pnl": 0.0,
+      "is_sharpe": -0.000340390367617336,
+      "max_dd_pct": 0.07958378127632124,
+      "net_pnl": -0.6125025190758606,
+      "params": {
+        "ev_min": 0.05,
+        "exit_flip": 0.4,
+        "macro": 0.25,
+        "news": 0.25,
+        "regime": 0.0,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": false,
+      "score": -0.6125025190758606,
+      "trades": 220,
+      "win_rate": 0.4999443179528113
+    },
+    {
+      "is_sharpe": -0.001308150075941031,
+      "max_dd_pct": 0.12655297536062407,
+      "net_pnl": -2.2000586723988818,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.4,
+        "macro": 0.15,
+        "news": 0.1,
+        "regime": 0.1,
+        "tech": 0.8,
+        "threshold": 0.45
+      },
+      "passed": false,
+      "score": -2.2000586723988818,
+      "trades": 174,
+      "win_rate": 0.49974711969282776
+    },
+    {
+      "is_sharpe": -0.001308150075941031,
+      "max_dd_pct": 0.12655297536062407,
+      "net_pnl": -2.2000586723988818,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.4,
+        "macro": 0.15,
+        "news": 0.4,
+        "regime": 0.1,
+        "tech": 0.8,
+        "threshold": 0.55
+      },
+      "passed": false,
+      "score": -2.2000586723988818,
+      "trades": 174,
+      "win_rate": 0.49974711969282776
+    },
+    {
+      "is_sharpe": -0.001973849782083628,
+      "max_dd_pct": 0.08269379023258096,
+      "net_pnl": -2.903250633375137,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.25,
+        "macro": 0.25,
+        "news": 0.4,
+        "regime": 0.0,
+        "tech": 0.8,
+        "threshold": 0.55
+      },
+      "passed": false,
+      "score": -2.903250633375137,
+      "trades": 222,
+      "win_rate": 0.49973844588888516
+    },
+    {
+      "is_sharpe": -0.001973849782083628,
+      "max_dd_pct": 0.08269379023258096,
+      "net_pnl": -2.903250633375137,
+      "params": {
+        "ev_min": 0.0,
+        "exit_flip": 0.25,
+        "macro": 0.25,
+        "news": 0.25,
+        "regime": 0.0,
+        "tech": 0.65,
+        "threshold": 0.45
+      },
+      "passed": false,
+      "score": -2.903250633375137,
+      "trades": 222,
+      "win_rate": 0.49973844588888516
+    },
+    {
+      "is_sharpe": -0.001973849782083628,
+      "max_dd_pct": 0.08269379023258096,
+      "net_pnl": -2.903250633375137,
+      "params": {
+        "ev_min": 0.02,
+        "exit_flip": 0.25,
+        "macro": 0.15,
+        "news": 0.25,
+        "regime": 0.0,
+        "tech": 0.8,
+        "threshold": 0.55
+      },
+      "passed": false,
+      "score": -2.903250633375137,
+      "trades": 222,
+      "win_rate": 0.49973844588888516
+    },
+    {
+      "is_sharpe": -0.001973849782083628,
+      "max_dd_pct": 0.08269379023258096,
+      "net_pnl": -2.903250633375137,
       "params": {
         "ev_min": 0.02,
         "exit_flip": 0.25,
         "macro": 0.15,
         "news": 0.4,
-        "regime": 0.1,
+        "regime": 0.0,
         "tech": 0.65,
-        "threshold": 0.65
+        "threshold": 0.55
       },
       "passed": false,
-      "score": -500.0,
-      "trades": 0,
-      "win_rate": 0.0
+      "score": -2.903250633375137,
+      "trades": 222,
+      "win_rate": 0.49973844588888516
     }
   ],
-  "sr0": 0.04931694806995831,
+  "sr0": 0.010978933826838037,
   "trial_sharpes": [
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.022183912735402846,
-    0.013445661569026351,
-    0.0061745275006973525,
-    -0.0054165788636249095,
-    -0.00786630841299494,
-    -0.022183912735402846,
-    -0.047545909447401905,
-    -0.047545909447401905,
-    -0.047545909447401905,
-    -0.047545909447401905,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0,
-    0.0
+    0.020281444610242984,
+    0.010404765895689857,
+    0.010299188658203675,
+    0.010238506979054526,
+    0.010238506979054526,
+    0.010238506979054526,
+    0.013186721305110624,
+    0.013186721305110624,
+    0.008813108850353045,
+    0.00845219867979191,
+    0.00845219867979191,
+    0.007803629683455083,
+    0.007482065411689907,
+    0.005978207598829877,
+    0.006156443286287663,
+    0.005352520604800242,
+    0.005460445336291127,
+    0.005522217283452882,
+    0.008297348713946355,
+    0.005449859836492435,
+    0.004863996693744038,
+    0.004863996693744038,
+    0.004959692102550583,
+    0.00423244187174561,
+    0.003128754624699205,
+    0.002991838416020956,
+    0.002991838416020956,
+    0.0021157391112886295,
+    -0.00041763498888429493,
+    -0.000340390367617336,
+    -0.001308150075941031,
+    -0.001308150075941031,
+    -0.001973849782083628,
+    -0.001973849782083628,
+    -0.001973849782083628,
+    -0.001973849782083628
   ]
 }

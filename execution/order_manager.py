@@ -229,6 +229,7 @@ class OrderManager(Component):
             EventType.ORDER_FILL, "execution.order_manager",
             payload={
                 "symbol": sym, "side": side,
+                "direction": 1.0 if side == "buy" else -1.0,
                 "volume": filled_notional,
                 "requested_notional": size,
                 "filled_notional": filled_notional,
@@ -239,6 +240,8 @@ class OrderManager(Component):
                 "levels_consumed": int(result.get("levels_consumed", 0)),
                 "order_type": result.get("order_type", "market"),
                 "expected_pnl": proposal.get("ev", 0.0),
+                "source": proposal.get("source"),
+                "release_id": proposal.get("release_id"),
             },
             symbol_impact=[sym], timestamp=self.clock.now(),
         ))
@@ -284,6 +287,7 @@ class OrderManager(Component):
             EventType.ORDER_FILL, "execution.order_manager",
             payload={
                 "symbol": fe.symbol, "side": fe.side,
+                "direction": 1.0 if fe.side == "buy" else -1.0,
                 "volume": fe.notional,
                 "filled_notional": fe.notional,
                 "price": fe.price,
@@ -294,6 +298,8 @@ class OrderManager(Component):
                 "order_id": fe.order_id,
                 "commission": fe.commission,
                 "expected_pnl": entry["proposal"].get("ev", 0.0),
+                "source": entry["proposal"].get("source"),
+                "release_id": entry["proposal"].get("release_id"),
             },
             symbol_impact=[fe.symbol], timestamp=self.clock.now(),
         ))

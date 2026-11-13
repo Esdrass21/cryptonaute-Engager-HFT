@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import time
@@ -125,7 +126,7 @@ class Config:
 
     @classmethod
     def load(cls, *paths: str | Path) -> "Config":
-        data = dict(cls.DEFAULTS)
+        data = copy.deepcopy(cls.DEFAULTS)
         for p in paths:
             p = Path(p)
             if p.exists():
