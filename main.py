@@ -71,6 +71,32 @@ DEFAULT_CONFIG = Path(__file__).resolve().parent / "config" / "default.yaml"
 TUNED_CONFIG = Path(__file__).resolve().parent / "config" / "tuned.yaml"
 
 
+# --- Telegram notifications ---
+def _send_tg_notification(chat_id: str, text: str, severity: str = "info") -> None:
+    """Send a Telegram notification (best-effort, never fails the command)."""
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    from notifications.telegram import TelegramNotifier
+    from core.bus import MessageBus
+    from core.config import Clock
+    from core.metrics import Metrics
+    import json as _json
+    
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return
+    try:
+        bus = MessageBus(backend="memory")
+        n = TelegramNotifier(bus, _load_cfg(None), Clock(), Metrics())
+        n.start()
+        if n._sender is not None:
+            n._sender.enqueue(text, severity)
+        n.stop()
+    except Exception as e:
+        log.warning("Telegram notification failed: %s", e)
+
+
 # =============================================================================
 # Orchestrator
 # =============================================================================
