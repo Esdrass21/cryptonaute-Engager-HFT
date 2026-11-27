@@ -1255,7 +1255,7 @@ review = provider.complete("Review this closed trade. Reply JSON {cause, recomme
 post_trade_reviewer = PostTradeReviewer(bus, cfg, clock, metrics)
 anomaly_detector = AnomalyDetector(bus, cfg, clock, metrics)
 ```
-
+                                     ### Cryptonaute-Engager ###
 ### Notes
 
 - Default backend is **stub** (deterministic, zero network) so the pipeline runs end-to-end in tests/paper.
