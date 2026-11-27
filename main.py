@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 import argparse
 import logging
 import signal
@@ -336,6 +337,17 @@ def _load_cfg(path: str | None) -> Config:
 
 def cmd_run(args) -> int:
     cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+🟢 *Cryptonaute — Paper/Live mode activé*
+- Mode: `"""+("live" if args.live else "paper")+"""`
+- Broker: `"""+str(args.broker)+"""`
+- Exchange: `"""+str(args.exchange if args.exchange else "auto")+"""`
+- Market: `"""+str(args.market if args.market else "auto")+"""`
+        """,
+        severity="info",
+    )
     cfg.set("mode", "live" if args.live else "paper")
     if args.market:
         cfg.set("data.market.source", args.market)
@@ -360,6 +372,18 @@ def cmd_run(args) -> int:
 
 def cmd_generate(args) -> int:
     cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+📊 *Cryptonaute — Génération d'historique synthétique*
+- Fichier: `"""+args.generate+"""`
+- Étapes: `"""+str(args.gen_steps)+"""`
+- Seed: `"""+str(args.seed)+"""`
+- Trendy: `"""+str(args.trendy)+"""`
+- Reversion: `"""+str(args.reversion)+"""`
+        """,
+        severity="info",
+    )
     events = generate(cfg, args.gen_steps, seed=args.seed,
                       trend_strength=args.trendy, mean_reversion=args.reversion)
     n = write_jsonl(events, args.generate)
@@ -388,8 +412,18 @@ def evaluate_gate(base_pass: bool, meta_pass: bool) -> tuple[bool, str]:
 
 def cmd_validate(args) -> int:
     from pathlib import Path
-
     import numpy as np
+
+    cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+🛡️ *Cryptonaute — Validation de stratégie*
+- Fichier d'historique: `"""+args.validate+"""`
+- Mode: `"""+("live" if args.live else "paper")+"""`
+        """,
+        severity="info",
+    )
 
     from validation.execution_model import build_execution_model
 
@@ -493,6 +527,18 @@ def cmd_validate(args) -> int:
 
 def cmd_tune(args) -> int:
     cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+🔧 *Cryptonaute — Tuning de stratégie*
+- Historique: `"""+args.tune+"""`
+- Trials: `"""+str(args.trials if args.trials else "défaut")+"""`
+- Min trades: `"""+str(args.min_trades)+"""`
+- Max DD: `"""+str(args.max_dd)+"""`
+- IS frac: `"""+str(args.is_frac)+"""`
+        """,
+        severity="info",
+    )
     events = load_jsonl(args.tune)
     from validation.tuning import tune, write_meta, write_tuned_config
 
@@ -539,7 +585,14 @@ def cmd_tune(args) -> int:
 
 def cmd_check_keys(args) -> int:
     cfg = _load_cfg(args.config)
-
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+🔑 *Cryptonaute — Vérification des credentials*
+- Vérification des clés et secrets configurés
+        """,
+        severity="info",
+    )
     def _present(k: str) -> bool:
         v = cfg.secret(k, "")
         return bool(v and v.strip())
@@ -579,6 +632,13 @@ def cmd_check_keys(args) -> int:
 
 def cmd_rotate_keys(args) -> int:
     cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+🔑 *Cryptonaute — Rotation des keys*
+        """,
+        severity="info",
+    )
     from core.audit import AuditLog
     from core.keys import KeyManager, build_key_provider
     from risk_management.two_person import ACTION_KEY_ROTATION, Approval, TwoPersonRule
@@ -659,8 +719,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_fetch(args) -> int:
-    import sys
-
+    cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+📥 *Cryptonaute — Téléchargement des données*
+- Sortie: `"""+args.fetch_out+"""`
+- Début: `"""+args.fetch_start+"""`
+- Mode: `"""+cfg.get("mode","paper")+"""`
+        """,
+        severity="info",
+    )
     from tools.fetch_features import main as fetch_main
     argv = ["--out", args.fetch_out, "--start", args.fetch_start]
     sys.argv = ["fetch_features"] + argv
@@ -669,6 +738,17 @@ def cmd_fetch(args) -> int:
 
 
 def cmd_train(args, which: str) -> int:
+    cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+📈 *Cryptonaute — Ajustage du modèle nowcast*
+- Type: `"""+("NFP" if which == "nfp" else "CPI")+"""`
+- Fichier de sortie: `"""+("config/nowcast/nfp_coefficients.json" if which == "nfp" else "config/nowcast/cpi_coefficients.json")+"""`
+- Mode: `"""+cfg.get("mode","paper")+"""`
+        """,
+        severity="info",
+    )
     import subprocess
     import sys
     tool = "tools/train_nfp_nowcast.py" if which == "nfp" else "tools/train_cpi_nowcast.py"
@@ -679,6 +759,17 @@ def cmd_train(args, which: str) -> int:
 
 
 def cmd_drift(args) -> int:
+    cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+📊 *Cryptonaute — Mesure de drift*
+- Historique: `"""+args.drift_history+"""`
+- Symbols: `"""+args.drift_symbols+"""`
+- Sortie: `"""+args.drift_out+"""`
+        """,
+        severity="info",
+    )
     import subprocess
     import sys
     return subprocess.call([
@@ -692,6 +783,13 @@ def cmd_drift(args) -> int:
 def cmd_test_telegram(args) -> int:
     import json as _json
     cfg = _load_cfg(args.config)
+    _send_tg_notification(
+        chat_id=os.getenv("TELEGRAM_CHAT_ID") or os.getenv("RELAY_CHANNEL"),
+        text="""
+🧪 *Cryptonaute — Test de connexion Telegram*
+        """,
+        severity="info",
+    )
     from core.bus import MessageBus
     from core.config import Clock
     from core.metrics import Metrics

@@ -6,6 +6,16 @@ For quant researchers and solo traders who want to validate strategy logic in si
 
 Architecture reference: `architecture-hft-quant-platform-v3.md`.
 
+
+French Video Explainer 
+
+<video controls src="Cryptonaute_HFT.mp4" title="Title"></video>
+
+English video Explainer
+
+<video controls src="Cryptonaute_Pipeline.mp4" title=""></video>  
+
+
 ---
 
 ## Module map
