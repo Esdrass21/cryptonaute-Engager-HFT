@@ -18,20 +18,23 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import signal
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
 
 # --- project root import shim ---
-_PROJECT_ROOT = str(Path(__file__).resolve().parent)
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-os.environ.setdefault("CRYPTONAUTE_HOME", str(Path(_PROJECT_ROOT) / "data"))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # --- core ---
+# --- layers ---
+from analytics.classic.macro import MacroAnalytics
+from analytics.macro_surprise import MacroSurpriseEngine
+from analytics.nlp.news_scorer import NewsScorer
+from analytics.order_flow.orderbook import OrderFlowAnalytics
+from analytics.quant.indicators import QuantAnalytics
+from analytics.quant.regime import RegimeDetector
 from core.audit import AuditLog
 from core.bus import MessageBus
 from core.checkpoint import Checkpoint, CheckpointState
@@ -42,29 +45,23 @@ from core.keys import KeyManager, build_key_provider
 from core.metrics import Metrics
 from core.schema_registry import register_default_schemas
 
-# --- risk: two-person rule ---
-from risk_management.two_person import DEFAULT_ALLOWED_ACTIONS, TwoPersonRule
-
-# --- layers ---
-from analytics.classic.macro import MacroAnalytics
-from analytics.nlp.news_scorer import NewsScorer
-from analytics.order_flow.orderbook import OrderFlowAnalytics
-from analytics.quant.indicators import QuantAnalytics
-from analytics.quant.regime import RegimeDetector
+# --- validation harness ---
+from data_ingestion.generate_sample import generate, load_jsonl, write_jsonl
 from data_ingestion.market_feeds.feeds import build_market_feed
 from data_ingestion.news_feeds.feeds import build_news_feed
 from execution.order_manager import OrderManager
 from execution.trade_journal import TradeJournal
 from risk_management.circuit_breaker import CircuitBreaker
 from risk_management.portfolio_optimizer import PortfolioOptimizer
+
+# --- risk: two-person rule ---
+from risk_management.two_person import DEFAULT_ALLOWED_ACTIONS, TwoPersonRule
 from risk_management.veto_service import RiskVetoService
 from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
 from strategy_engine.expected_value import ExpectedValueEngine
+from strategy_engine.strategy_router import StrategyRouter
 from strategy_engine.signal_fusion import SignalFusion
 from strategy_engine.state_machine import StrategyOrchestrator
-
-# --- validation harness ---
-from data_ingestion.generate_sample import generate, load_jsonl, write_jsonl
 from validation.engine import monte_carlo, vectorized_backtest, walk_forward
 from validation.replay_harness import ReplayHarness
 
@@ -88,19 +85,23 @@ class Orchestrator:
         # Schemas must be registered before any bus.publish.
         register_default_schemas()
 
-        # Phase 2: key manager + audit log + two-person rule
+        # Phase 2: key manager + audit log + two-person rule.
+        # Accept both the legacy ``core.*`` nesting and the flat keys used by
+        # config/default.yaml, so operator settings are never silently ignored.
+        audit_cfg = cfg.get_any("core.audit", "audit", default={}) or {}
         self.audit = AuditLog(
-            path=cfg.get("core.audit.path", "data/audit.jsonl"),
-            fsync=cfg.get("core.audit.fsync", True),
+            path=audit_cfg.get("path", "data/audit.jsonl"),
+            fsync=audit_cfg.get("fsync", True),
         )
         self.key_manager = KeyManager(
-            provider=build_key_provider(cfg.get("core.keys", None)),
+            provider=build_key_provider(cfg.get_any("core.keys", "keys", default=None)),
             mode=cfg.get("mode", "paper"),
         )
+        two_person_cfg = cfg.get_any("core.two_person", "two_person", default={}) or {}
         self.two_person = TwoPersonRule(
             audit=self.audit,
             allowed_actions=DEFAULT_ALLOWED_ACTIONS,
-            min_approvers=int(cfg.get("core.two_person.min_approvers", 1)),
+            min_approvers=int(two_person_cfg.get("min_approvers", 1)),
         )
 
         self.clock = Clock()
@@ -114,10 +115,10 @@ class Orchestrator:
             enable_prometheus=cfg.get("observability.prometheus.enabled", False),
             port=cfg.get("observability.prometheus.port", 9100),
         )
-        self.components: List[Component] = []
+        self.components: list[Component] = []
 
         # Crash recovery.
-        self.checkpoint: Optional[Checkpoint] = None
+        self.checkpoint: Checkpoint | None = None
         self._resume_offset = 0
         if self.event_log is not None:
             ck_path = cfg.get(
@@ -139,17 +140,17 @@ class Orchestrator:
         self.market = build_market_feed(bus, c, clk, m)
         self.news = build_news_feed(bus, c, clk, m)
         # --- Phase 6: macro feeds + nowcasts ---------------------------- #
-        from data_ingestion.news_feeds.bls import BLSReleaseFeed
-        from data_ingestion.news_feeds.fred import FredFeed
-        from data_ingestion.news_feeds.consensus import ConsensusFeed
-        from analytics.nowcast.nfp import NFPNowcast
-        from data_ingestion.news_feeds.fed import FedFeed
-        from data_ingestion.news_feeds.zillow import ZillowFeed
-        from data_ingestion.news_feeds.ism import ISMFeed
-        from data_ingestion.news_feeds.challenger import ChallengerFeed
-        from data_ingestion.news_feeds.forexfactory import ForexFactoryFeed
-        from data_ingestion.news_feeds.gdelt import GDELTFeed
         from analytics.nowcast.cpi import CPINowcast
+        from analytics.nowcast.nfp import NFPNowcast
+        from data_ingestion.news_feeds.bls import BLSReleaseFeed
+        from data_ingestion.news_feeds.challenger import ChallengerFeed
+        from data_ingestion.news_feeds.consensus import ConsensusFeed
+        from data_ingestion.news_feeds.fed import FedFeed
+        from data_ingestion.news_feeds.forexfactory import ForexFactoryFeed
+        from data_ingestion.news_feeds.fred import FredFeed
+        from data_ingestion.news_feeds.gdelt import GDELTFeed
+        from data_ingestion.news_feeds.ism import ISMFeed
+        from data_ingestion.news_feeds.zillow import ZillowFeed
         from strategy_engine.release_drift import ReleaseDriftStrategy
 
         self.bls = BLSReleaseFeed(bus, c, clk, m)
@@ -172,8 +173,11 @@ class Orchestrator:
         self.quant = QuantAnalytics(bus, c, clk, m)
         self.regime = RegimeDetector(bus, c, clk, m)
         self.macro = MacroAnalytics(bus, c, clk, m)
+        self.macro_surprise = MacroSurpriseEngine(bus, c, clk, m)
         self.order_flow = OrderFlowAnalytics(bus, c, clk, m, enabled=c.get("analytics.order_flow.enabled", False))
         self.nlp = NewsScorer(bus, c, clk, m)
+        from analytics.portfolio_var import PortfolioVaR
+        self.vaR = PortfolioVaR(bus, c, clk, m)
         # Layer 3
         self.review = PostTradeReviewer(bus, c, clk, m)
         self.anomaly = AnomalyDetector(bus, c, clk, m)
@@ -185,6 +189,8 @@ class Orchestrator:
         self.fusion = SignalFusion(bus, c, clk, m)
         self.ev = ExpectedValueEngine(bus, c, clk, m)
         self.fsm = StrategyOrchestrator(bus, c, clk, m, key_manager=self.key_manager)
+        # Layer 4b: strategy router combines TSMOM + noise_band + fusion -> FSM
+        self.router = StrategyRouter(bus, self.cfg, clk, m, shadow_enabled=self.cfg.get('strategy.shadow.enabled', False))
         # Layer 5
         self.execution = OrderManager(bus, c, clk, m, key_manager=self.key_manager)
         # Audit trail
@@ -198,9 +204,9 @@ class Orchestrator:
             self.market, self.news, self.bls, self.fred, self.consensus, self.nowcast_nfp,
             self.fed, self.zillow, self.ism, self.challenger, self.forexfactory, self.gdelt,
             self.nowcast_cpi, self.release_drift, self.noise_band, self.tsmom,
-            self.quant, self.regime, self.macro,
-            self.order_flow, self.nlp, self.review, self.anomaly,
-            self.fusion, self.ev, self.fsm, self.execution,
+            self.quant, self.regime, self.macro, self.macro_surprise,
+            self.order_flow, self.nlp, self.vaR, self.review, self.anomaly,
+            self.fusion, self.ev, self.fsm, self.router, self.execution,
             self.veto, self.portfolio, self.circuit, self.journal, self.notifier,
         ]
 
@@ -221,7 +227,7 @@ class Orchestrator:
         except Exception:  # noqa: BLE001
             pass
 
-    def run(self, steps: Optional[int] = None) -> None:
+    def run(self, steps: int | None = None) -> None:
         signal.signal(signal.SIGINT, lambda *_: self.stop())
         self.start()
         try:
@@ -335,11 +341,31 @@ def cmd_generate(args) -> int:
     return 0
 
 
+def _gate_override(gate: dict, args) -> dict:
+    """Read validation.gate with per-mode (paper/live) override selected by
+    the --live flag.  Returns min_dsr, max_pbo, max_daily_drawdown_pct."""
+    mode = "live" if getattr(args, "live", False) else "paper"
+    override = gate.get(mode, {}) if isinstance(gate.get(mode), dict) else {}
+    return {
+        "min_dsr": float(override.get("min_dsr", gate.get("min_dsr", 0.0))),
+        "max_pbo": float(override.get("max_pbo", gate.get("max_pbo", 0.5))),
+        "max_daily_drawdown_pct": float(
+            override.get("max_daily_drawdown_pct",
+                         gate.get("max_daily_drawdown_pct", 2.0))),
+    }
+
+
+def evaluate_gate(base_pass: bool, meta_pass: bool) -> tuple[bool, str]:
+    gate_pass = base_pass and meta_pass
+    return gate_pass, ("PASS" if gate_pass else "FAIL")
+
+
 def cmd_validate(args) -> int:
-    import numpy as np
     from pathlib import Path
+
+    import numpy as np
+
     from validation.execution_model import build_execution_model
-    from validation.engine import vectorized_backtest, walk_forward, monte_carlo
 
     cfg = _load_cfg(args.config)
     events = load_jsonl(args.validate)
@@ -393,7 +419,14 @@ def cmd_validate(args) -> int:
         print(f"\n      purged walk-forward folds = {len(wf)}  avg OOS win_rate = {avg_wr:.3f}")
 
         # --- Gate -------------------------------------------------------- #
-        max_dd = float(cfg.get("risk.max_daily_drawdown_pct", 2.0))
+        # Single source of truth: validation.gate.  Per-mode override
+        # (paper/live) is selected by the --live flag.
+        gate = cfg.get("validation.gate", {})
+        override = _gate_override(gate, args)
+        max_dd = override["max_daily_drawdown_pct"]
+        min_dsr = override["min_dsr"]
+        max_pbo = override["max_pbo"]
+
         base_pass = (net > 0.0) and (dd <= max_dd)
 
         # DSR / PBO from the tuning meta sidecar (if --tune has been run).
@@ -407,17 +440,14 @@ def cmd_validate(args) -> int:
                 except Exception as exc:
                     log.warning("failed to load tuning meta: %s", exc)
 
-        min_dsr = float(cfg.get("validation.gate.min_dsr", 0.0))
-        max_pbo = float(cfg.get("validation.gate.max_pbo", 0.5))
         meta_pass = True
         if meta is not None:
             dsr_ok = meta.dsr >= min_dsr
             pbo_ok = (meta.pbo != meta.pbo) or (meta.pbo <= max_pbo)  # NaN tolerated
             meta_pass = dsr_ok and pbo_ok
 
-        gate_pass = base_pass and meta_pass
-        verdict = "PASS" if gate_pass else "FAIL"
-        print(f"\nVALIDATION GATE (architecture §7.3):")
+        gate_pass, verdict = evaluate_gate(base_pass, meta_pass)
+        print("\nVALIDATION GATE (architecture §7.3):")
         print(f"  net expectancy = {net:+.2f}  (need > 0)")
         print(f"  max drawdown  = {dd:.2f}%  (limit {max_dd:.2f}%)")
         if meta is not None:
@@ -428,7 +458,7 @@ def cmd_validate(args) -> int:
                 print(f"  tuned OOS net = {meta.oos_net:+.2f}  "
                       f"dd={meta.oos_dd:.2f}%  sharpe={meta.oos_sharpe:.4f}")
         else:
-            print(f"  (no tuning meta found — run --tune to enable DSR/PBO gating)")
+            print("  (no tuning meta found — run --tune to enable DSR/PBO gating)")
         print(f"  RESULT: {verdict}")
     else:
         print("No candles found in recorded history for backtest.")
@@ -438,7 +468,7 @@ def cmd_validate(args) -> int:
 def cmd_tune(args) -> int:
     cfg = _load_cfg(args.config)
     events = load_jsonl(args.tune)
-    from validation.tuning import tune, write_tuned_config, write_meta
+    from validation.tuning import tune, write_meta, write_tuned_config
 
     report = tune(
         events, cfg,
@@ -523,17 +553,19 @@ def cmd_check_keys(args) -> int:
 
 def cmd_rotate_keys(args) -> int:
     cfg = _load_cfg(args.config)
-    from core.keys import build_key_provider, KeyManager
     from core.audit import AuditLog
-    from risk_management.two_person import TwoPersonRule, Approval, ACTION_KEY_ROTATION
+    from core.keys import KeyManager, build_key_provider
+    from risk_management.two_person import ACTION_KEY_ROTATION, Approval, TwoPersonRule
 
-    audit = AuditLog(cfg.get("core.audit.path", "data/audit.jsonl"))
+    audit_cfg = cfg.get_any("core.audit", "audit", default={}) or {}
+    two_person_cfg = cfg.get_any("core.two_person", "two_person", default={}) or {}
+    audit = AuditLog(audit_cfg.get("path", "data/audit.jsonl"))
     rule = TwoPersonRule(audit, allowed_actions=[ACTION_KEY_ROTATION],
-                         min_approvers=cfg.get("core.two_person.min_approvers", 1))
+                         min_approvers=two_person_cfg.get("min_approvers", 1))
     approvers = tuple(a for a in (args.approvers or "").split(",") if a)
     rule.check(Approval(actor=args.actor, approvers=approvers,
                         action=ACTION_KEY_ROTATION, payload={"reason": args.reason}))
-    km = KeyManager(build_key_provider(cfg.get("core.keys", None)),
+    km = KeyManager(build_key_provider(cfg.get_any("core.keys", "keys", default=None)),
                     mode=cfg.get("mode", "paper"))
     before = km.current_key_id()
     km.reload()
@@ -601,8 +633,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_fetch(args) -> int:
-    from tools.fetch_features import main as fetch_main
     import sys
+
+    from tools.fetch_features import main as fetch_main
     argv = ["--out", args.fetch_out, "--start", args.fetch_start]
     sys.argv = ["fetch_features"] + argv
     fetch_main()
@@ -610,7 +643,8 @@ def cmd_fetch(args) -> int:
 
 
 def cmd_train(args, which: str) -> int:
-    import subprocess, sys
+    import subprocess
+    import sys
     tool = "tools/train_nfp_nowcast.py" if which == "nfp" else "tools/train_cpi_nowcast.py"
     csv = "data/features/nfp_features.csv" if which == "nfp" else "data/features/cpi_features.csv"
     out = "config/nowcast/nfp_coefficients.json" if which == "nfp" \
@@ -619,7 +653,8 @@ def cmd_train(args, which: str) -> int:
 
 
 def cmd_drift(args) -> int:
-    import subprocess, sys
+    import subprocess
+    import sys
     return subprocess.call([
         sys.executable, "-m", "validation.drift_analysis",
         "--history", args.drift_history,
@@ -631,10 +666,10 @@ def cmd_drift(args) -> int:
 def cmd_test_telegram(args) -> int:
     import json as _json
     cfg = _load_cfg(args.config)
-    from notifications.telegram import TelegramNotifier, _normalize_chat_id, escape_mdv2
     from core.bus import MessageBus
     from core.config import Clock
     from core.metrics import Metrics
+    from notifications.telegram import TelegramNotifier, _normalize_chat_id, escape_mdv2
     bus = MessageBus(backend="memory")
     n = TelegramNotifier(bus, cfg, Clock(), Metrics())
     n.start()
@@ -655,7 +690,7 @@ def cmd_test_telegram(args) -> int:
         )
         print(f"  relay -> {_normalize_chat_id(n.relay_channel)}")
 
-    import time as _t; _t.sleep(4.0)
+    time.sleep(4.0)
     print("\nstats:", _json.dumps(n.stats(), indent=2))
     n.stop()
     return 0
@@ -664,16 +699,26 @@ def cmd_test_telegram(args) -> int:
 def main(argv: list | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     args = build_parser().parse_args(argv)
-    if args.check_keys:   return cmd_check_keys(args)
-    if args.fetch:        return cmd_fetch(args)
-    if args.train_nfp:    return cmd_train(args, "nfp")
-    if args.train_cpi:    return cmd_train(args, "cpi")
-    if args.drift:        return cmd_drift(args)
-    if args.test_telegram: return cmd_test_telegram(args)
-    if args.rotate_keys:  return cmd_rotate_keys(args)
-    if args.generate:     return cmd_generate(args)
-    if args.validate:     return cmd_validate(args)
-    if args.tune:         return cmd_tune(args)
+    if args.check_keys:
+        return cmd_check_keys(args)
+    if args.fetch:
+        return cmd_fetch(args)
+    if args.train_nfp:
+        return cmd_train(args, "nfp")
+    if args.train_cpi:
+        return cmd_train(args, "cpi")
+    if args.drift:
+        return cmd_drift(args)
+    if args.test_telegram:
+        return cmd_test_telegram(args)
+    if args.rotate_keys:
+        return cmd_rotate_keys(args)
+    if args.generate:
+        return cmd_generate(args)
+    if args.validate:
+        return cmd_validate(args)
+    if args.tune:
+        return cmd_tune(args)
     return cmd_run(args)
 
 

@@ -22,13 +22,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
+from core.events import EventType, NormalizedEvent, make_event
 
 log = logging.getLogger("strategy.release_drift")
 
@@ -51,7 +47,7 @@ class DriftRule:
     position_pct: float
 
 
-_DEFAULT_RULES: Dict[str, DriftRule] = {
+_DEFAULT_RULES: dict[str, DriftRule] = {
     "CPI_YOY":            DriftRule("EURUSD", -1, 3600.0, 0.4, 1.2, 0.5),
     "CPI_MOM":            DriftRule("EURUSD", -1, 3600.0, 0.4, 1.2, 0.5),
     "CORE_CPI_YOY":       DriftRule("EURUSD", -1, 3600.0, 0.4, 1.2, 0.5),
@@ -70,11 +66,11 @@ class ReleaseDriftStrategy(Component):
         self.min_surprise_z = float(cfg.get("strategy.release_drift.min_surprise_z", 1.5))
         self.max_concurrent = int(cfg.get("strategy.release_drift.max_concurrent", 1))
         self.symbols_allowed = set(cfg.get("symbols", ["EURUSD"]))
-        self.rules: Dict[str, DriftRule] = self._load_rules(cfg)
-        self._open: Dict[str, dict] = {}          # symbol -> {entry_ts, direction, rule, release_id}
-        self._cooldown: Dict[str, float] = {}     # release_id -> next allowed ts
+        self.rules: dict[str, DriftRule] = self._load_rules(cfg)
+        self._open: dict[str, dict] = {}          # symbol -> {entry_ts, direction, rule, release_id}
+        self._cooldown: dict[str, float] = {}     # release_id -> next allowed ts
 
-    def _load_rules(self, cfg) -> Dict[str, DriftRule]:
+    def _load_rules(self, cfg) -> dict[str, DriftRule]:
         rules = dict(_DEFAULT_RULES)
         for rid, override in (cfg.get("strategy.release_drift.rules", {}) or {}).items():
             try:

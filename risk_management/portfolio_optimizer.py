@@ -8,16 +8,12 @@ correlated-exposure checks.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List
 
 import numpy as np
 from scipy.stats import norm
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType
-from core.metrics import Metrics
 
 log = logging.getLogger("risk.portfolio")
 
@@ -27,9 +23,9 @@ class PortfolioOptimizer(Component):
         super().__init__(bus, cfg, clock, metrics, name="risk.portfolio")
         self.lookback = lookback
         self.symbols = cfg.get("symbols", [])
-        self._rets: Dict[str, List[float]] = {s: [] for s in self.symbols}
-        self.correlation: Dict[str, Dict[str, float]] = {}
-        self.var: Dict[str, float] = {}
+        self._rets: dict[str, list[float]] = {s: [] for s in self.symbols}
+        self.correlation: dict[str, dict[str, float]] = {}
+        self.var: dict[str, float] = {}
         self.var_conf = float(cfg.get("risk.var_confidence", 0.95))
 
     def start(self) -> None:
@@ -63,7 +59,7 @@ class PortfolioOptimizer(Component):
             self.var[s] = z * vol
         self.metrics.set("portfolio_var_max", max(self.var.values()) if self.var else 0.0)
 
-    def max_correlation_with(self, symbol: str, open_symbols: List[str]) -> float:
+    def max_correlation_with(self, symbol: str, open_symbols: list[str]) -> float:
         best = 0.0
         for o in open_symbols:
             if o == symbol:

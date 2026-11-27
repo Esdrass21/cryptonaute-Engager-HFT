@@ -11,14 +11,11 @@ import math
 import random
 import threading
 import time
-from typing import Dict, List, Optional
-
-import numpy as np
 
 from core.bus import MessageBus
 from core.component import Component
 from core.config import Clock, Config
-from core.events import EventType, NormalizedEvent
+from core.events import EventType
 from core.metrics import Metrics
 
 from ..normalizer import normalize_candle, normalize_order_book, normalize_tick
@@ -29,7 +26,7 @@ log = logging.getLogger("data.market")
 class MarketFeed(Component):
     def __init__(self, bus, cfg, clock, metrics, name="market"):
         super().__init__(bus, cfg, clock, metrics, name)
-        self.symbols: List[str] = cfg.get("symbols", ["EURUSD"])
+        self.symbols: list[str] = cfg.get("symbols", ["EURUSD"])
         self.timeframe: str = cfg.get("timeframe", "M5")
         self._seq = 0
 
@@ -54,13 +51,13 @@ class SimMarketFeed(MarketFeed):
         self.trend_strength = float(cfg.get("data.market.sim.trend_strength", 0.0))
         self.mean_reversion = float(cfg.get("data.market.sim.mean_reversion", 0.01))
         self._rng = random.Random(seed)
-        self._prices: Dict[str, float] = {}
-        self._base_vol: Dict[str, float] = {}
-        self._candle_state: Dict[str, Dict[str, float]] = {}
+        self._prices: dict[str, float] = {}
+        self._base_vol: dict[str, float] = {}
+        self._candle_state: dict[str, dict[str, float]] = {}
         # persistent trend regime per symbol (fair microstructure: trends exist & persist)
-        self._trend: Dict[str, float] = {}
-        self._trend_life: Dict[str, int] = {}
-        self._anchor: Dict[str, float] = {}  # OU anchor (slowly drifting) per symbol
+        self._trend: dict[str, float] = {}
+        self._trend_life: dict[str, int] = {}
+        self._anchor: dict[str, float] = {}  # OU anchor (slowly drifting) per symbol
         self._tick_count = 0
         self._seq = 0
         self._init_prices()
@@ -150,7 +147,7 @@ class SimMarketFeed(MarketFeed):
                 self._publish_book(sym, price)
             self._seq += 1
 
-    def run_realtime(self, steps: Optional[int] = None) -> None:
+    def run_realtime(self, steps: int | None = None) -> None:
         i = 0
         while self._running and (steps is None or i < steps):
             self.run_once()
@@ -237,7 +234,7 @@ class CryptoMarketFeed(MarketFeed):
         self._exchange_symbol_overrides = cfg.get("data.market.crypto.symbol_map", {}) or {}
 
     @staticmethod
-    def _to_ccxt_symbol(sym: str) -> Optional[str]:
+    def _to_ccxt_symbol(sym: str) -> str | None:
         if "/" in sym:
             return sym
         # Only auto-split crypto-native quote currencies. USD/EUR are ambiguous with
@@ -317,7 +314,7 @@ class CryptoMarketFeed(MarketFeed):
                 self._poll_symbol(sym, pair)
                 self._seq += 1
 
-    def run_realtime(self, steps: Optional[int] = None) -> None:
+    def run_realtime(self, steps: int | None = None) -> None:
         i = 0
         while self._running and (steps is None or i < steps):
             self.run_once()
@@ -362,7 +359,7 @@ class HybridMarketFeed(MarketFeed):
         if self._crypto:
             self._crypto.run_once()
 
-    def run_realtime(self, steps: Optional[int] = None) -> None:
+    def run_realtime(self, steps: int | None = None) -> None:
         i = 0
         while self._running and (steps is None or i < steps):
             self.run_once()

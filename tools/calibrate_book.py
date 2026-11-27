@@ -26,8 +26,8 @@ import argparse
 import json
 import logging
 import math
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
@@ -35,7 +35,7 @@ log = logging.getLogger("tools.calibrate_book")
 
 
 def _iter_records(path: Path) -> Iterable[dict]:
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
@@ -46,7 +46,7 @@ def _iter_records(path: Path) -> Iterable[dict]:
                 continue
 
 
-def _to_levels(raw) -> List[Tuple[float, float]]:
+def _to_levels(raw) -> list[tuple[float, float]]:
     out = []
     for lvl in raw or []:
         if isinstance(lvl, (list, tuple)) and len(lvl) >= 2:
@@ -59,16 +59,16 @@ def _to_levels(raw) -> List[Tuple[float, float]]:
 
 def fit_params(
     records: Iterable[dict],
-    symbol: Optional[str] = None,
-) -> Dict[str, float]:
+    symbol: str | None = None,
+) -> dict[str, float]:
     """
     Return {tick_size_bps, top_size_notional, depth_growth, size_jitter, n}.
     Every stat is a median across records, so outliers can't skew the fit.
     """
-    tick_bps: List[float] = []
-    top_notional: List[float] = []
-    growth: List[float] = []
-    jitter: List[float] = []
+    tick_bps: list[float] = []
+    top_notional: list[float] = []
+    growth: list[float] = []
+    jitter: list[float] = []
 
     for rec in records:
         if symbol and rec.get("symbol") != symbol:
@@ -111,7 +111,7 @@ def fit_params(
             except Exception:  # noqa: BLE001
                 pass
 
-    def _med(xs: List[float], default: float) -> float:
+    def _med(xs: list[float], default: float) -> float:
         return float(np.median(xs)) if xs else default
 
     return {
@@ -124,9 +124,9 @@ def fit_params(
 
 
 def write_overrides(
-    params: Dict[str, float],
+    params: dict[str, float],
     out: Path,
-    symbol: Optional[str] = None,
+    symbol: str | None = None,
 ) -> None:
     import yaml as _yaml
     doc = {"execution": {"book": {

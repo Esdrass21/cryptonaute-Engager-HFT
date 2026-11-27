@@ -18,13 +18,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -40,7 +36,7 @@ _EMP_RE = re.compile(
 )
 
 
-def parse_ism_employment(html: str) -> Optional[float]:
+def parse_ism_employment(html: str) -> float | None:
     m = _EMP_RE.search(html)
     if not m:
         return None
@@ -61,8 +57,8 @@ class ISMFeed(Component):
         self.mfg_url = str(cfg.get("data.news.ism.mfg_url", ISM_MFG_URL))
         self.svc_url = str(cfg.get("data.news.ism.svc_url", ISM_SVC_URL))
         self._last_poll = 0.0
-        self._last_value: dict[str, Optional[float]] = {}
-        self._http: Optional[HttpClient] = None
+        self._last_value: dict[str, float | None] = {}
+        self._http: HttpClient | None = None
         if bool(cfg.get("data.news.ism.enabled", True)):
             self._http = HttpClient(rate_per_sec=0.5, burst=1.0)
 

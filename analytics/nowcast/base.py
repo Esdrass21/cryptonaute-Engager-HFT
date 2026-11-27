@@ -10,13 +10,9 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 log = logging.getLogger("analytics.nowcast")
 
@@ -28,7 +24,7 @@ class NowcastResult:
     stddev: float
     n_features: int
     confidence: float          # 0..1 — model's self-assessed reliability
-    feature_vector: Dict[str, float]
+    feature_vector: dict[str, float]
 
 
 class NowcastBase(Component, ABC):
@@ -41,7 +37,7 @@ class NowcastBase(Component, ABC):
 
     def __init__(self, bus, cfg, clock, metrics, name: str = "analytics.nowcast") -> None:
         super().__init__(bus, cfg, clock, metrics, name=name)
-        self._latest_inputs: Dict[str, float] = {}
+        self._latest_inputs: dict[str, float] = {}
 
     # ------------------------------------------------------------------ #
     def start(self) -> None:
@@ -57,10 +53,10 @@ class NowcastBase(Component, ABC):
     def release_ids(self) -> list[str]: ...
 
     @abstractmethod
-    def features(self) -> Dict[str, float]: ...
+    def features(self) -> dict[str, float]: ...
 
     @abstractmethod
-    def predict(self, features: Dict[str, float]) -> tuple[float, float]: ...
+    def predict(self, features: dict[str, float]) -> tuple[float, float]: ...
 
     # ------------------------------------------------------------------ #
     def _on_news(self, ev) -> None:

@@ -1,20 +1,26 @@
 import math
 from pathlib import Path
 from unittest.mock import patch
+
 import pytest
 
 from analytics.nowcast.cpi import CPINowcast, _CPIState
 from data_ingestion.news_feeds.fed import (
-    parse_rss, score_fed_text, FedFeed, FeedItem, _parse_iso, _parse_pubdate,
+    FedFeed,
+    FeedItem,
+    _parse_iso,
+    _parse_pubdate,
+    parse_rss,
+    score_fed_text,
 )
-from strategy_engine.release_drift import ReleaseDriftStrategy, DriftRule
-
+from strategy_engine.release_drift import DriftRule, ReleaseDriftStrategy
 
 # ---------- helpers ------------------------------------------------------ #
 
 class _Clock:
     def __init__(self, t=1000.0, virtual=False):
-        self._t = float(t); self._v = virtual
+        self._t = float(t)
+        self._v = virtual
     def now(self): return self._t
     def advance(self, d): self._t += d
     @property

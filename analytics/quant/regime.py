@@ -8,15 +8,11 @@ sole trigger). Synchronous + fast so it can live near the critical path.
 from __future__ import annotations
 
 import logging
-from typing import Dict
 
 import numpy as np
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 log = logging.getLogger("analytics.regime")
 
@@ -25,8 +21,8 @@ class RegimeDetector(Component):
     def __init__(self, bus, cfg, clock, metrics, lookback: int = 100):
         super().__init__(bus, cfg, clock, metrics, name="analytics.regime")
         self.lookback = lookback
-        self._closes: Dict[str, list] = {}
-        self._rets: Dict[str, list] = {}          # last 30 log-returns (rolling estimate)
+        self._closes: dict[str, list] = {}
+        self._rets: dict[str, list] = {}          # last 30 log-returns (rolling estimate)
 
     def start(self) -> None:
         self._running = True

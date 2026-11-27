@@ -9,22 +9,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 
+from analytics.nlp.news_scorer import NewsScorer
+from analytics.quant.indicators import QuantAnalytics, ema, rsi, sma
+from analytics.quant.regime import RegimeDetector
 from core.bus import MessageBus
-from core.config import Config, Clock
+from core.config import Clock, Config
 from core.events import EventType, make_event
 from core.metrics import Metrics
-
-from analytics.quant.indicators import QuantAnalytics, rsi, sma, ema
-from analytics.quant.regime import RegimeDetector
-from analytics.nlp.news_scorer import NewsScorer
-from strategy_engine.signal_fusion import SignalFusion
-from strategy_engine.expected_value import ExpectedValueEngine
-from strategy_engine.state_machine import StrategyOrchestrator, SymbolFSM
 from execution.broker_adapter import PaperBroker
 from execution.order_manager import OrderManager
-from risk_management.veto_service import RiskVetoService
 from risk_management.circuit_breaker import CircuitBreaker
-from self_correction.mistral_client import MistralClient, PostTradeReviewer
+from risk_management.veto_service import RiskVetoService
+from self_correction.mistral_client import Provider, PostTradeReviewer
+from strategy_engine.expected_value import ExpectedValueEngine
+from strategy_engine.signal_fusion import SignalFusion
+from strategy_engine.state_machine import StrategyOrchestrator, SymbolFSM
 
 
 # ---- Layer 2 ---------------------------------------------------------------
@@ -134,10 +133,16 @@ def test_ev_engine_rejects_weak_confidence_signals():
 def test_fsm_transitions():
     fsm = SymbolFSM("EURUSD")
     assert fsm.state == "idle"
-    fsm.detect(); assert fsm.state == "signal_detected"
-    fsm.confirm(); assert fsm.state == "confirmed"
-    fsm.open(); fsm.manage(); assert fsm.state == "managing"
-    fsm.close(); fsm.reset(); assert fsm.state == "idle"
+    fsm.detect()
+    assert fsm.state == "signal_detected"
+    fsm.confirm()
+    assert fsm.state == "confirmed"
+    fsm.open()
+    fsm.manage()
+    assert fsm.state == "managing"
+    fsm.close()
+    fsm.reset()
+    assert fsm.state == "idle"
 
 
 # ---- Layer 5 ---------------------------------------------------------------
@@ -156,7 +161,6 @@ def test_paper_broker_fill_and_close():
 def test_order_manager_retry_backoff():
     cfg = Config.load()
     clock = Clock()
-    failing = PaperBroker(cfg, clock)
 
     class Flaky(PaperBroker):
         def __init__(self, *a, **k):

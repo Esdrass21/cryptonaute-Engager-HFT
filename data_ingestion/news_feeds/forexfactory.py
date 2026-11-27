@@ -42,14 +42,11 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -57,7 +54,7 @@ log = logging.getLogger("data.forexfactory")
 
 FF_BASE = "https://nfs.faireconomy.media/ff_calendar_{window}.json"
 
-TITLE_MAP: Dict[str, str] = {
+TITLE_MAP: dict[str, str] = {
     "Non-Farm Employment Change":   "NFP",
     "Unemployment Rate":            "UNEMPLOYMENT_RATE",
     "ADP Non-Farm Employment Change": "ADP_PRIVATE",
@@ -94,21 +91,21 @@ class FFEvent:
     country: str
     ts: float
     impact: str
-    forecast: Optional[float]
-    previous: Optional[float]
-    raw: Dict[str, Any]
+    forecast: float | None
+    previous: float | None
+    raw: dict[str, Any]
 
 
-def _parse_iso(s: str) -> Optional[float]:
+def _parse_iso(s: str) -> float | None:
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s).astimezone(timezone.utc).timestamp()
+        return datetime.fromisoformat(s).astimezone(UTC).timestamp()
     except Exception:
         pass
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S%z"):
         try:
-            return datetime.strptime(s, fmt).astimezone(timezone.utc).timestamp()
+            return datetime.strptime(s, fmt).astimezone(UTC).timestamp()
         except ValueError:
             continue
     return None
@@ -117,7 +114,7 @@ def _parse_iso(s: str) -> Optional[float]:
 _NUM_RE = re.compile(r"(-?\d+(?:\.\d+)?)")
 
 
-def _parse_num(s: Optional[str]) -> Optional[float]:
+def _parse_num(s: str | None) -> float | None:
     if s is None:
         return None
     s = s.strip()
@@ -136,14 +133,14 @@ def _parse_num(s: Optional[str]) -> Optional[float]:
     return v
 
 
-def parse_ff_json(text: str) -> List[FFEvent]:
+def parse_ff_json(text: str) -> list[FFEvent]:
     try:
         doc = json.loads(text)
     except json.JSONDecodeError:
         return []
     if not isinstance(doc, list):
         return []
-    out: List[FFEvent] = []
+    out: list[FFEvent] = []
     for rec in doc:
         if not isinstance(rec, dict):
             continue
@@ -172,7 +169,7 @@ class ForexFactoryFeed(Component):
         self.lookahead_s = float(cfg.get("data.news.forexfactory.lookahead_s", 7 * 86400.0))
         self.countries = set(cfg.get("data.news.forexfactory.countries", ["USD", "EUR", "GBP", "JPY"]))
         self.min_impact = str(cfg.get("data.news.forexfactory.min_impact", "High"))
-        self._http: Optional[HttpClient] = None
+        self._http: HttpClient | None = None
         self._last_poll = 0.0
         self._seen_guids: set[str] = set()
         self._armed: set[str] = set()
@@ -204,7 +201,7 @@ class ForexFactoryFeed(Component):
         self._poll()
 
     def _poll(self) -> None:
-        all_events: List[FFEvent] = []
+        all_events: list[FFEvent] = []
         for window in ("thisweek", "nextweek"):
             url = FF_BASE.format(window=window)
             try:

@@ -16,13 +16,9 @@ recommends and is never in the critical path.
 from __future__ import annotations
 
 import logging
-from typing import Dict
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
+from core.events import EventType, NormalizedEvent, make_event
 
 log = logging.getLogger("strategy.fusion")
 
@@ -43,7 +39,7 @@ class SignalFusion(Component):
             "order_flow": cfg.get("strategy.composite.of_weight", 0.05),
         }
         self.threshold = cfg.get("strategy.composite.threshold", 0.55)
-        self._pending: Dict[str, Dict[str, float]] = {}
+        self._pending: dict[str, dict[str, float]] = {}
 
     def start(self) -> None:
         self._running = True
@@ -88,7 +84,7 @@ class SignalFusion(Component):
         if "tech" in bucket:  # technical is the primary driver
             self._combine(sym, bucket)
 
-    def _combine(self, sym: str, bucket: Dict[str, float]) -> None:
+    def _combine(self, sym: str, bucket: dict[str, float]) -> None:
         # Weighted sum, normalized by the total weight actually present so a strong
         # single driver (e.g. a decisive tech signal) can still cross the threshold.
         total_w = sum(self.weights.get(k, 0.0) for k in bucket) or 1.0

@@ -11,18 +11,13 @@ Layer 4 fusion can weight them.
 from __future__ import annotations
 
 import logging
-import uuid
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
+from core.events import EventType, NormalizedEvent, make_event
 
 log = logging.getLogger("analytics.quant")
 
@@ -32,7 +27,7 @@ class Candle:
     t: float
     o: float
     h: float
-    l: float
+    low: float
     c: float
     v: float
 
@@ -54,7 +49,7 @@ def rsi(series: np.ndarray, n: int = 14) -> np.ndarray:
     return (100 - 100 / (1 + rs)).to_numpy()
 
 
-def atr(c: List[Candle], n: int = 14) -> float:
+def atr(c: list[Candle], n: int = 14) -> float:
     tr = np.array([
         max(c[i].h - c[i].l, abs(c[i].h - c[i - 1].c), abs(c[i].l - c[i - 1].c))
         for i in range(1, len(c))
@@ -82,19 +77,19 @@ class QuantAnalytics(Component):
     def __init__(self, bus, cfg, clock, metrics, lookback: int = 200):
         super().__init__(bus, cfg, clock, metrics, name="analytics.quant")
         self.lookback = lookback
-        self._candles: Dict[str, list] = {}          # bounded list of Candle (last `lookback`)
+        self._candles: dict[str, list] = {}          # bounded list of Candle (last `lookback`)
         self.symbols = cfg.get("symbols", [])
         self._fast = int(cfg.get("analytics.quant.ma_fast", 12))
         self._slow = int(cfg.get("analytics.quant.ma_slow", 26))
         self._rsi_n = int(cfg.get("analytics.quant.rsi_n", 14))
         # incremental state per symbol
-        self._ema_f: Dict[str, float] = {}
-        self._ema_s: Dict[str, float] = {}
-        self._ema_f_seeded: Dict[str, bool] = {}
-        self._ema_s_seeded: Dict[str, bool] = {}
-        self._rsi_buf: Dict[str, list] = {}          # last rsi_n deltas (rolling SMA of gain/loss)
-        self._rsi_seeded: Dict[str, bool] = {}
-        self._recent: Dict[str, list] = {}           # last <=30 closes for vol estimate
+        self._ema_f: dict[str, float] = {}
+        self._ema_s: dict[str, float] = {}
+        self._ema_f_seeded: dict[str, bool] = {}
+        self._ema_s_seeded: dict[str, bool] = {}
+        self._rsi_buf: dict[str, list] = {}          # last rsi_n deltas (rolling SMA of gain/loss)
+        self._rsi_seeded: dict[str, bool] = {}
+        self._recent: dict[str, list] = {}           # last <=30 closes for vol estimate
 
     def start(self) -> None:
         self._running = True
@@ -156,8 +151,6 @@ class QuantAnalytics(Component):
         if not buf:
             buf.append(price)
             return 50.0
-        prev = buf[-1]
-        delta = price - prev
         if len(buf) <= n:                      # warm-up: simple rolling window
             buf.append(price)
         else:
@@ -171,12 +164,9 @@ class QuantAnalytics(Component):
         return float(100 - 100 / (1 + rs))
 
     def _emit_signal(self, sym: str) -> None:
-        bars = self._candles[sym]
-        c = bars[-1].c
         # state (EMA/RSI) already updated per-candle in on_candle; read it here.
         ma_f = self._ema_f[sym]
         ma_s = self._ema_s[sym]
-        ma_dir = 1.0 if ma_f > ma_s else -1.0
         # Trend conviction = (fast-slow EMA gap) normalized by recent volatility — a
         # "trend z-score". Persistent drift produces a stable, strong conviction in [-1, 1].
         recent = self._recent[sym]

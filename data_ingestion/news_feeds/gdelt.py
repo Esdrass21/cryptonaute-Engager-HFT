@@ -32,14 +32,10 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -50,13 +46,13 @@ GDELT_DOC_API = "https://api.gdeltproject.org/api/v2/doc/doc"
 _GDELT_TS_RE = re.compile(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z")
 
 
-def parse_gdelt_ts(s: str) -> Optional[float]:
+def parse_gdelt_ts(s: str) -> float | None:
     m = _GDELT_TS_RE.match(s or "")
     if not m:
         return None
     try:
         y, mo, d, hh, mm, ss = (int(x) for x in m.groups())
-        return datetime(y, mo, d, hh, mm, ss, tzinfo=timezone.utc).timestamp()
+        return datetime(y, mo, d, hh, mm, ss, tzinfo=UTC).timestamp()
     except ValueError:
         return None
 
@@ -72,7 +68,7 @@ class GDELTArticle:
     social_image: str = ""
 
 
-def parse_gdelt_artlist(text: str) -> List[GDELTArticle]:
+def parse_gdelt_artlist(text: str) -> list[GDELTArticle]:
     try:
         doc = json.loads(text)
     except json.JSONDecodeError:
@@ -80,7 +76,7 @@ def parse_gdelt_artlist(text: str) -> List[GDELTArticle]:
     arts = doc.get("articles") if isinstance(doc, dict) else None
     if not isinstance(arts, list):
         return []
-    out: List[GDELTArticle] = []
+    out: list[GDELTArticle] = []
     for a in arts:
         if not isinstance(a, dict):
             continue
@@ -108,7 +104,7 @@ class GDELTFeed(Component):
         self.poll_interval_s = float(cfg.get("data.news.gdelt.poll_interval_s", 300.0))
         self.max_records = int(cfg.get("data.news.gdelt.max_records", 250))
         self.queries = cfg.get("data.news.gdelt.queries", []) or []
-        self._http: Optional[HttpClient] = None
+        self._http: HttpClient | None = None
         self._last_poll = 0.0
         self._seen_urls: set[str] = set()
         self._seen_cap = 20_000
@@ -136,7 +132,7 @@ class GDELTFeed(Component):
         for q in self.queries:
             self._poll_query(q)
 
-    def _poll_query(self, q: Dict) -> None:
+    def _poll_query(self, q: dict) -> None:
         query_id = str(q.get("id", "?"))
         qstr = q.get("q")
         if not qstr:

@@ -4,6 +4,7 @@ Generate docs/metrics.md from core/metrics_catalog.py.
 Usage: python -m infra.monitoring.generate_metrics_doc
 """
 from pathlib import Path
+
 from core.metrics_catalog import all_specs
 
 

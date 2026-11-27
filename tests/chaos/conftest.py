@@ -1,5 +1,7 @@
-import base64, json
+import base64
+import json
 from pathlib import Path
+
 import pytest
 
 from core.config import Config

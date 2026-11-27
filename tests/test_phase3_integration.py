@@ -3,12 +3,13 @@ import base64
 import json
 import math
 from pathlib import Path
+
 import numpy as np
 import pytest
 
 from core.config import Config
 from validation.replay_harness import ReplayHarness
-from validation.tuning import tune, write_meta, load_meta, pbo_from_results
+from validation.tuning import load_meta, pbo_from_results, tune, write_meta
 
 
 class _Ev:
@@ -50,8 +51,10 @@ def test_harness_equity_returns_aligned_across_trials(monkeypatch, tmp_path):
     monkeypatch.setenv("RISK_SIGNING_KEY", base64.b64encode(b"1" * 32).decode())
     cfg = _cfg(tmp_path)
     events = _synth_history(400)
-    h1 = ReplayHarness(cfg, events); h1.run()
-    h2 = ReplayHarness(cfg, events); h2.run()
+    h1 = ReplayHarness(cfg, events)
+    h1.run()
+    h2 = ReplayHarness(cfg, events)
+    h2.run()
     # Same recorded events -> same number of equity samples.
     assert len(h1.equity_curve()) == len(h2.equity_curve())
     assert len(h1.equity_returns()) == len(h2.equity_returns())
@@ -61,7 +64,8 @@ def test_harness_trade_records_shape(monkeypatch, tmp_path):
     monkeypatch.setenv("RISK_SIGNING_KEY", base64.b64encode(b"1" * 32).decode())
     cfg = _cfg(tmp_path)
     events = _synth_history(400)
-    h = ReplayHarness(cfg, events); h.run()
+    h = ReplayHarness(cfg, events)
+    h.run()
     for ts, pnl in h.trade_records():
         assert isinstance(ts, float)
         assert isinstance(pnl, float)

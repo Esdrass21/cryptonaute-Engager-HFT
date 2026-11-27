@@ -13,16 +13,14 @@ calendar exposes UTC timestamps for the rest of the platform.
 from __future__ import annotations
 
 import logging
-import re
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 log = logging.getLogger("data.calendar")
 
 ET = ZoneInfo("America/New_York")
-UTC = timezone.utc
+UTC = UTC
 
 
 # --------------------------------------------------------------------------- #
@@ -34,8 +32,8 @@ class ScheduledRelease:
     release_id: str                 # e.g. "CPI_YOY", "NFP", "FOMC_RATE"
     source: str                     # "BLS" | "FED" | "DOL" | "CENSUS" | "BEA"
     scheduled_ts: float             # UTC epoch seconds
-    consensus: Optional[float] = None
-    prior: Optional[float] = None
+    consensus: float | None = None
+    prior: float | None = None
     units: str = ""
     url: str = ""                   # direct release URL (if known)
 
@@ -89,7 +87,7 @@ def _months_between(start: datetime, end: datetime):
             y += 1
 
 
-def _fomc_dates_2025_2026() -> List[tuple[int, int, int]]:
+def _fomc_dates_2025_2026() -> list[tuple[int, int, int]]:
     """
     FOMC meeting decision dates (second day), hard-coded from the Fed's
     published calendar. Update annually from
@@ -119,7 +117,7 @@ class ReleaseCalendar:
 
     def __init__(self, cfg=None) -> None:
         self.cfg = cfg
-        self._overrides: Dict[str, ScheduledRelease] = {}
+        self._overrides: dict[str, ScheduledRelease] = {}
         if cfg is not None:
             for o in cfg.get("data.calendar.overrides", []) or []:
                 try:
@@ -136,9 +134,9 @@ class ReleaseCalendar:
                     log.warning("calendar override malformed: %s", exc)
 
     # ------------------------------------------------------------------ #
-    def releases_between(self, start_ts: float, end_ts: float) -> List[ScheduledRelease]:
+    def releases_between(self, start_ts: float, end_ts: float) -> list[ScheduledRelease]:
         """Return all scheduled releases in [start_ts, end_ts], sorted by time."""
-        out: List[ScheduledRelease] = list(self._overrides.values())
+        out: list[ScheduledRelease] = list(self._overrides.values())
 
         start = datetime.fromtimestamp(start_ts, tz=UTC).astimezone(ET)
         end = datetime.fromtimestamp(end_ts, tz=UTC).astimezone(ET)
@@ -149,7 +147,7 @@ class ReleaseCalendar:
 
         # dedupe by release_id + scheduled_ts, filter to window, sort
         seen = set()
-        filtered: List[ScheduledRelease] = []
+        filtered: list[ScheduledRelease] = []
         for r in out:
             key = (r.release_id, r.scheduled_ts)
             if key in seen:
@@ -161,8 +159,8 @@ class ReleaseCalendar:
         return filtered
 
     # ------------------------------------------------------------------ #
-    def _rules_for_month(self, y: int, m: int) -> List[ScheduledRelease]:
-        rules: List[ScheduledRelease] = []
+    def _rules_for_month(self, y: int, m: int) -> list[ScheduledRelease]:
+        rules: list[ScheduledRelease] = []
 
         # NFP — first Friday of the month, 08:30 ET
         nfp_day = _first_weekday(y, m, 4)  # Friday

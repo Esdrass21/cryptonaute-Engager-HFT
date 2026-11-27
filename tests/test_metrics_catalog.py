@@ -1,7 +1,13 @@
 """Tests for metrics_catalog.py itself — guards against drift."""
 import pytest
+
 from core.metrics_catalog import (
-    all_specs, by_layer, names, spec, validate_usage, MetricKind,
+    MetricKind,
+    all_specs,
+    by_layer,
+    names,
+    spec,
+    validate_usage,
 )
 
 

@@ -16,12 +16,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, List, Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
+from core.events import EventType, NormalizedEvent, make_event
 from core.keys import KeyManager, build_key_provider
 
 from .broker_adapter import BrokerAdapter, build_broker
@@ -30,7 +27,7 @@ log = logging.getLogger("execution.order_manager")
 
 
 class OrderManager(Component):
-    def __init__(self, bus, cfg, clock, metrics, broker: Optional[BrokerAdapter] = None,
+    def __init__(self, bus, cfg, clock, metrics, broker: BrokerAdapter | None = None,
                  key_manager: KeyManager | None = None):
         super().__init__(bus, cfg, clock, metrics, name="execution.order_manager")
         self.broker = broker or build_broker(cfg, clock)
@@ -39,7 +36,7 @@ class OrderManager(Component):
         self.slip_tol = float(cfg.get("execution.slippage_tolerance_pct", 0.05))
         self.adaptive_rtt = bool(cfg.get("execution.poll_rtt_adaptive", True))
         self._rtt = 0.05  # measured round-trip time (s), starts conservative
-        self._open: Dict[str, dict] = {}
+        self._open: dict[str, dict] = {}
         # Phase 2: key manager for veto verification; shared instance passed through
         if key_manager is not None:
             self.km = key_manager
@@ -47,7 +44,7 @@ class OrderManager(Component):
             self.km = KeyManager(build_key_provider(cfg.get("core.keys")), mode="paper")
 
         # Phase 4.5 — limit orders
-        self._pending_limits: Dict[str, dict] = {}
+        self._pending_limits: dict[str, dict] = {}
         self._default_order_type = str(cfg.get("execution.order_type", "market")).lower()
         self._limit_offset_bps = float(cfg.get("execution.limit_offset_bps", 5.0))
         self._limit_ttl_s = float(cfg.get("execution.limit_ttl_s", 5.0))

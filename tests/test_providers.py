@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
 from core.bus import MessageBus
-from core.config import Config, Clock
+from core.config import Clock, Config
 from core.events import EventType
 from core.metrics import Metrics
 from data_ingestion.market_feeds.providers import (
@@ -43,7 +43,6 @@ def _mk(feed_cls, monkeypatch, data, cfg_extra=None):
     clock = Clock()
     metrics = Metrics()
     feed = feed_cls(MessageBus(), cfg, clock, metrics)
-    requests_get = feed._session.get
     monkeypatch.setattr(type(feed._session), "get",
                         lambda self, *a, **kw: FakeResponse(data), raising=True)
     return feed
@@ -146,8 +145,9 @@ def test_run_once_emits_new_bars_only(monkeypatch):
 
 def test_fetch_history_ccxt_chunking(tmp_path, monkeypatch):
     """_fetch_ccxt walks paginated OHLCV and returns ascending candle events."""
+    ccxt = pytest.importorskip("ccxt")
+
     import tools.fetch_history as fh
-    import ccxt
 
     state = {"calls": 0}
 

@@ -9,13 +9,9 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Dict
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 log = logging.getLogger("analytics.classic")
 
@@ -24,7 +20,7 @@ class MacroAnalytics(Component):
     def __init__(self, bus, cfg, clock, metrics, window: int = 50):
         super().__init__(bus, cfg, clock, metrics, name="analytics.classic")
         self.window = window
-        self._surprises: Dict[str, deque] = {}
+        self._surprises: dict[str, deque] = {}
 
     def start(self) -> None:
         self._running = True

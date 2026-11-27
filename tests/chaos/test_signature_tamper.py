@@ -4,7 +4,7 @@ import pytest
 from core.bus import MessageBus
 from core.event_log import InMemoryEventLog
 from core.events import make_event
-from core.keys import KeyManager, FileKeyProvider
+from core.keys import FileKeyProvider, KeyManager
 from core.schema_registry import register_default_schemas
 from risk_management.signing import sign_veto
 from strategy_engine.state_machine import StrategyOrchestrator
@@ -42,7 +42,8 @@ def test_tampered_qty_is_rejected(cfg, keyring):
     signed, sig = sign_veto(km, proposal, "allow", "", 1_000_000.0)
 
     # Tamper the payload AFTER signing.
-    tampered = dict(signed); tampered["qty"] = 99.0
+    tampered = dict(signed)
+    tampered["qty"] = 99.0
 
     forwarded = []
     bus.subscribe("order_proposal", lambda e: forwarded.append(e))

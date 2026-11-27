@@ -19,13 +19,10 @@ import logging
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from datetime import UTC
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -69,7 +66,7 @@ class FeedItem:
     description: str
 
 
-def parse_rss(xml_text: str) -> List[FeedItem]:
+def parse_rss(xml_text: str) -> list[FeedItem]:
     """Minimal RSS/Atom parser."""
     try:
         root = ET.fromstring(xml_text)
@@ -78,7 +75,7 @@ def parse_rss(xml_text: str) -> List[FeedItem]:
         return []
 
     ns = {"atom": "http://www.w3.org/2005/Atom"}
-    items: List[FeedItem] = []
+    items: list[FeedItem] = []
 
     for item in root.iter("item"):
         guid = _text(item, "guid") or _text(item, "link") or ""
@@ -123,9 +120,9 @@ def _parse_iso(s: str) -> float:
     if not m:
         return 0.0
     y, mo, d, hh, mm, ss = (int(x) for x in m.groups())
-    from datetime import datetime, timezone
+    from datetime import datetime
     try:
-        return datetime(y, mo, d, hh, mm, ss, tzinfo=timezone.utc).timestamp()
+        return datetime(y, mo, d, hh, mm, ss, tzinfo=UTC).timestamp()
     except ValueError:
         return 0.0
 
@@ -146,7 +143,7 @@ class FedFeed(Component):
         self.poll_interval_s = float(cfg.get("data.news.fed.poll_interval_s", 300.0))
         self._last_poll = 0.0
         self._seen: set[str] = set()
-        self._http: Optional[HttpClient] = None
+        self._http: HttpClient | None = None
         if bool(cfg.get("data.news.fed.enabled", True)):
             self._http = HttpClient(rate_per_sec=1.0, burst=2.0)
 

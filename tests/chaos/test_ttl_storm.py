@@ -1,6 +1,7 @@
 """Chaos: many resting limits expire at once. System must cancel them all,
 emit an ORDER_REJECT per expiry, and not leak state."""
 import pytest
+
 from execution.broker_adapter import PaperBroker
 
 pytestmark = pytest.mark.chaos

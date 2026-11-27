@@ -19,14 +19,13 @@ from __future__ import annotations
 import logging
 import math
 from collections import deque
-from typing import Dict, List
 
 import numpy as np
 
 from core.bus import MessageBus
 from core.component import Component
 from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
+from core.events import EventType, NormalizedEvent, make_event
 from core.metrics import Metrics
 
 log = logging.getLogger("strategy.tsmom")
@@ -38,7 +37,7 @@ class TSMOMStrategy(Component):
     def __init__(self, bus: MessageBus, cfg: Config, clock: Clock, metrics: Metrics) -> None:
         super().__init__(bus, cfg, clock, metrics, name="strategy.tsmom")
         sec = "strategy.tsmom"
-        self.lookbacks: List[int] = list(cfg.get(f"{sec}.lookbacks", [288, 1440, 8640]))
+        self.lookbacks: list[int] = list(cfg.get(f"{sec}.lookbacks", [288, 1440, 8640]))
         self.rebalance_s = float(cfg.get(f"{sec}.rebalance_s", 86400.0))
         self.vol_win = int(cfg.get(f"{sec}.vol_win", 288))
         self.vol_target = float(cfg.get(f"{sec}.vol_target", 0.5))
@@ -46,10 +45,10 @@ class TSMOMStrategy(Component):
         self.min_bars = int(cfg.get(f"{sec}.min_bars", max(self.lookbacks) + 1))
         self.enabled = bool(cfg.get(f"{sec}.enabled", True))
         self.symbols_allowed = set(cfg.get(f"{sec}.symbols", cfg.get("symbols", ["EURUSD"])))
-        self._closes: Dict[str, deque] = {}
-        self._open: Dict[str, dict] = {}
-        self._armed: Dict[str, float] = {}  # symbol -> direction of last proposal
-        self._last_rebalance: Dict[str, float] = {}
+        self._closes: dict[str, deque] = {}
+        self._open: dict[str, dict] = {}
+        self._armed: dict[str, float] = {}  # symbol -> direction of last proposal
+        self._last_rebalance: dict[str, float] = {}
 
     # ---- signal ---------------------------------------------------------
     def _target_position(self, sym: str) -> float:

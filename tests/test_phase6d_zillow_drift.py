@@ -1,20 +1,32 @@
-import json, math
+import json
+import math
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from data_ingestion.news_feeds.zillow import (
-    parse_zori_csv, zori_yoy, parse_manheim_html, ZillowFeed, _month_minus_12,
+    ZillowFeed,
+    _month_minus_12,
+    parse_manheim_html,
+    parse_zori_csv,
+    zori_yoy,
 )
 from validation.drift_analysis import (
-    _load_events, _normalise, build_price_series, analyse, suggest_rules,
-    DriftBucket, DEFAULT_HORIZONS_S,
+    DEFAULT_HORIZONS_S,
+    DriftBucket,
+    _load_events,
+    _normalise,
+    analyse,
+    build_price_series,
+    suggest_rules,
 )
 
 
 class _Clock:
     def __init__(self, t=1000.0, virtual=False):
-        self._t = float(t); self._v = virtual
+        self._t = float(t)
+        self._v = virtual
     def now(self): return self._t
     def advance(self, d): self._t += d
     @property

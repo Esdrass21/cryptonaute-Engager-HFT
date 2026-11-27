@@ -11,21 +11,19 @@ Phase 3 additions
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
 
 import numpy as np
-
-from core.bus import MessageBus
-from core.config import Clock, Config
-from core.events import EventType, NormalizedEvent
-from core.keys import KeyManager, build_key_provider
-from core.metrics import Metrics
 
 from analytics.classic.macro import MacroAnalytics
 from analytics.nlp.news_scorer import NewsScorer
 from analytics.order_flow.orderbook import OrderFlowAnalytics
 from analytics.quant.indicators import QuantAnalytics
 from analytics.quant.regime import RegimeDetector
+from core.bus import MessageBus
+from core.config import Clock, Config
+from core.events import EventType, NormalizedEvent
+from core.keys import KeyManager, build_key_provider
+from core.metrics import Metrics
 from execution.broker_adapter import build_broker
 from execution.order_manager import OrderManager
 from risk_management.circuit_breaker import CircuitBreaker
@@ -34,9 +32,9 @@ from risk_management.veto_service import RiskVetoService
 from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
 from strategy_engine.expected_value import ExpectedValueEngine
 from strategy_engine.noise_band import NoiseBandStrategy
-from strategy_engine.tsmom import TSMOMStrategy
 from strategy_engine.signal_fusion import SignalFusion
 from strategy_engine.state_machine import StrategyOrchestrator
+from strategy_engine.tsmom import TSMOMStrategy
 
 log = logging.getLogger("validation.replay")
 
@@ -44,7 +42,7 @@ log = logging.getLogger("validation.replay")
 class ReplayHarness:
     """Wires the full platform onto a replay bus and replays a recorded event list."""
 
-    def __init__(self, cfg: Config, events: List[NormalizedEvent]):
+    def __init__(self, cfg: Config, events: list[NormalizedEvent]):
         self.cfg = cfg
         self.clock = Clock()
         self.clock.set_virtual(events[0].timestamp if events else 0.0)
@@ -54,12 +52,15 @@ class ReplayHarness:
         self.components = []
 
         # Shared key material — one provider, one manager, injected everywhere.
-        provider = build_key_provider(cfg.get("core.keys", None))
+        # Accept legacy ``core.keys`` and the flat ``keys`` block.
+        keys_cfg = cfg.get_any("core.keys", "keys", default=None) \
+            if hasattr(cfg, "get_any") else cfg.get("core.keys", None)
+        provider = build_key_provider(keys_cfg)
         self.km = KeyManager(provider, mode=cfg.get("mode", "paper"))
 
         # Return / trade streams.
-        self._trade_records: List[Tuple[float, float]] = []       # (exit_ts, pnl)
-        self._equity_curve: List[Tuple[float, float]] = []        # (ts, balance)
+        self._trade_records: list[tuple[float, float]] = []       # (exit_ts, pnl)
+        self._equity_curve: list[tuple[float, float]] = []        # (ts, balance)
 
         self._wire()
 
@@ -156,11 +157,11 @@ class ReplayHarness:
     def account_state(self) -> dict:
         return self.broker.get_account_state()
 
-    def open_positions(self) -> List[dict]:
+    def open_positions(self) -> list[dict]:
         return self.broker.get_open_positions()
 
     # ---- Phase 3 accessors ------------------------------------------- #
-    def trade_records(self) -> List[Tuple[float, float]]:
+    def trade_records(self) -> list[tuple[float, float]]:
         """List of ``(exit_ts, pnl)`` for every closed trade."""
         return list(self._trade_records)
 
@@ -168,7 +169,7 @@ class ReplayHarness:
         """Per-trade realized PnL, as an array."""
         return np.array([p for _, p in self._trade_records], dtype=float)
 
-    def equity_curve(self) -> List[Tuple[float, float]]:
+    def equity_curve(self) -> list[tuple[float, float]]:
         """``(ts, balance)`` sampled once per recorded event."""
         return list(self._equity_curve)
 

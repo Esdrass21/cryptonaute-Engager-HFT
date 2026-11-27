@@ -1,17 +1,22 @@
-import base64, json, math
-from datetime import datetime, timezone
+import base64
+import json
+import math
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
 import pytest
 
+from analytics.nowcast.nfp import NFPFeatures, NFPNowcast
+from data_ingestion.news_feeds.bls import BLSReleaseFeed, parse_release
 from data_ingestion.news_feeds.calendar import (
-    ReleaseCalendar, _et, _first_weekday,
+    ReleaseCalendar,
+    _et,
+    _first_weekday,
 )
-from data_ingestion.news_feeds.bls import parse_release, BLSReleaseFeed
-from analytics.nowcast.nfp import NFPNowcast, NFPFeatures
 
 ET = ZoneInfo("America/New_York")
-UTC = timezone.utc
+UTC = UTC
 
 
 # ---------- Calendar ------------------------------------------------------ #
@@ -96,8 +101,8 @@ class _MockMetrics:
 
 
 def _make_nfp_nowcast(tmp_path: Path, coef_path: Path | None = None):
-    from core.config import Config
     from core.bus import MessageBus
+    from core.config import Config
     from core.event_log import InMemoryEventLog
     from core.schema_registry import register_default_schemas
 

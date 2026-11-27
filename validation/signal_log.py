@@ -15,8 +15,9 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional
+from typing import Any
 
 log = logging.getLogger("validation.signal_log")
 
@@ -34,7 +35,7 @@ class SignalLog:
         self._lock = threading.Lock()
         self._fh = open(self.path, "a", encoding="utf-8")
 
-    def record(self, event_type: str, payload: Dict[str, Any], ts: float) -> None:
+    def record(self, event_type: str, payload: dict[str, Any], ts: float) -> None:
         if event_type == "news" and payload.get("source") != "consensus":
             return
         rec = {"type": event_type, "ts": float(ts), "payload": payload}
@@ -45,10 +46,10 @@ class SignalLog:
             if self.fsync:
                 os.fsync(self._fh.fileno())
 
-    def replay(self) -> Iterator[Dict[str, Any]]:
+    def replay(self) -> Iterator[dict[str, Any]]:
         if not self.path.exists():
             return
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:

@@ -11,16 +11,10 @@ States:  idle -> signal_detected -> confirmed -> position_open -> managing -> cl
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
+from core.events import EventType, NormalizedEvent, make_event
 from core.keys import KeyManager
-
-from risk_management.veto_service import RiskVetoService
 from risk_management.signing import verify_any
 
 log = logging.getLogger("strategy.fsm")
@@ -39,9 +33,9 @@ class SymbolFSM:
 
     def __init__(self, symbol: str):
         self.symbol = symbol
-        self.last_proposal: Optional[dict] = None
-        self.open_side: Optional[str] = None
-        self.entry_price: Optional[float] = None
+        self.last_proposal: dict | None = None
+        self.open_side: str | None = None
+        self.entry_price: float | None = None
         if _HAVE_TRANSITIONS:
             self.machine = Machine(self, states=self.states, initial="idle", auto_transitions=False)
             self.machine.add_transition("detect", "idle", "signal_detected")
@@ -77,17 +71,54 @@ class SymbolFSM:
         if not _HAVE_TRANSITIONS:
             self.state = "idle"
 
+    # Public API kept stable whether or not the ``transitions`` library is installed.
+    def detect(self):
+        if _HAVE_TRANSITIONS:
+            self.machine.detect()
+        else:
+            self._manual_detect()
+
+    def confirm(self):
+        if _HAVE_TRANSITIONS:
+            self.machine.confirm()
+        else:
+            self._manual_confirm()
+
+    def open(self):  # noqa: A002 - shadows builtin, intentional FSM verb
+        if _HAVE_TRANSITIONS:
+            self.machine.open()
+        else:
+            self._manual_open()
+
+    def manage(self):
+        if _HAVE_TRANSITIONS:
+            self.machine.manage()
+        else:
+            self._manual_manage()
+
+    def close(self):
+        if _HAVE_TRANSITIONS:
+            self.machine.close()
+        else:
+            self._manual_close()
+
+    def reset(self):
+        if _HAVE_TRANSITIONS:
+            self.machine.reset()
+        else:
+            self._manual_reset()
+
 
 class StrategyOrchestrator(Component):
     """Drives per-symbol FSMs from ORDER_PROPOSAL + RISK_VETO + ORDER_FILL events."""
 
     def __init__(self, bus, cfg, clock, metrics, key_manager: KeyManager | None = None):
         super().__init__(bus, cfg, clock, metrics, name="strategy.fsm")
-        self._fsms: Dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", ["EURUSD"])}
+        self._fsms: dict[str, SymbolFSM] = {s: SymbolFSM(s) for s in cfg.get("symbols", ["EURUSD"])}
         self.threshold = float(cfg.get("strategy.fusion.threshold", 0.55))
         self.exit_flip = float(cfg.get("strategy.exit_flip_conviction", 0.15))
-        self._open_side: Dict[str, int] = {}
-        self._pending_veto: Dict[str, dict] = {}
+        self._open_side: dict[str, int] = {}
+        self._pending_veto: dict[str, dict] = {}
         # Phase 2: key manager -- no dev fallback
         if key_manager is not None:
             self.km = key_manager

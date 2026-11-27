@@ -2,12 +2,12 @@
 """Single source of truth for every metric the platform emits."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from enum import Enum
-from typing import Dict, Iterable, List, Tuple
+from enum import StrEnum
 
 
-class MetricKind(str, Enum):
+class MetricKind(StrEnum):
     COUNTER = "counter"
     GAUGE = "gauge"
     HISTOGRAM = "histogram"
@@ -29,16 +29,16 @@ class MetricSpec:
     kind: MetricKind
     layer: str
     help: str
-    labels: Tuple[str, ...] = ()
-    buckets: Tuple[float, ...] = ()
-    alerts: Tuple[AlertRule, ...] = ()
+    labels: tuple[str, ...] = ()
+    buckets: tuple[float, ...] = ()
+    alerts: tuple[AlertRule, ...] = ()
 
 
 # --------------------------------------------------------------------------- #
 # Catalog                                                                     #
 # --------------------------------------------------------------------------- #
 
-_CATALOG: List[MetricSpec] = [
+_CATALOG: list[MetricSpec] = [
     # --- L4 / L5 / L6 core flow ------------------------------------------ #
     MetricSpec("risk_veto_emitted", MetricKind.COUNTER, "l6_risk",
                "Count of RISK_VETO events emitted by the veto service.",
@@ -194,18 +194,18 @@ _CATALOG: List[MetricSpec] = [
 ]
 
 
-def all_specs() -> List[MetricSpec]:
+def all_specs() -> list[MetricSpec]:
     return list(_CATALOG)
 
 
-def by_layer() -> Dict[str, List[MetricSpec]]:
-    out: Dict[str, List[MetricSpec]] = {}
+def by_layer() -> dict[str, list[MetricSpec]]:
+    out: dict[str, list[MetricSpec]] = {}
     for s in _CATALOG:
         out.setdefault(s.layer, []).append(s)
     return out
 
 
-def names() -> List[str]:
+def names() -> list[str]:
     return [s.name for s in _CATALOG]
 
 

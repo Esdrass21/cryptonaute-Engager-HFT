@@ -26,7 +26,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 log = logging.getLogger("core.checkpoint")
 
@@ -35,7 +35,7 @@ log = logging.getLogger("core.checkpoint")
 class CheckpointState:
     offset: int = 0
     last_ts: float = 0.0
-    state: Dict[str, Any] = field(default_factory=dict)
+    state: dict[str, Any] = field(default_factory=dict)
     written_at: float = 0.0
 
     def to_dict(self) -> dict:
@@ -46,7 +46,7 @@ class Checkpoint:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
 
-    def load(self) -> Optional[CheckpointState]:
+    def load(self) -> CheckpointState | None:
         if not self.path.exists():
             return None
         try:

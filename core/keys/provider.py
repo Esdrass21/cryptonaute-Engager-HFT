@@ -18,7 +18,6 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
 
 log = logging.getLogger("core.keys")
 
@@ -109,7 +108,7 @@ class FileKeyProvider(KeyProvider):
         self.path = Path(path)
         if not self.path.exists():
             raise KeyProviderError(f"keyring not found: {self.path}")
-        self._cache: Dict[str, KeyMaterial] = {}
+        self._cache: dict[str, KeyMaterial] = {}
         self._current_id: str = ""
         self.reload()
 
@@ -126,7 +125,7 @@ class FileKeyProvider(KeyProvider):
         if current not in keys:
             raise KeyProviderError(f"current key_id {current!r} not in keys")
 
-        new_cache: Dict[str, KeyMaterial] = {}
+        new_cache: dict[str, KeyMaterial] = {}
         for kid, b64 in keys.items():
             try:
                 raw = base64.b64decode(b64)

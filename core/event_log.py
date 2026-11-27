@@ -17,25 +17,28 @@ import json
 import os
 import threading
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Dict, Iterator
+from typing import Any
 
 
 class EventLog(ABC):
     @abstractmethod
-    def append(self, event: Dict[str, Any]) -> None: ...
+    def append(self, event: dict[str, Any]) -> None: ...
 
     @abstractmethod
-    def replay(self) -> Iterator[Dict[str, Any]]: ...
+    def replay(self) -> Iterator[dict[str, Any]]: ...
 
     @abstractmethod
     def count(self) -> int: ...
 
     @abstractmethod
-    def replay_from(self, offset: int = 0) -> Iterator[Dict[str, Any]]: ...
+    def replay_from(self, offset: int = 0) -> Iterator[dict[str, Any]]: ...
 
     def close(self) -> None:  # pragma: no cover - default no-op
-        pass
+        """No-op close (default implementation)."""
+        ...
+        return None
 
 
 class FileEventLog(EventLog):
@@ -48,7 +51,7 @@ class FileEventLog(EventLog):
         self._lock = threading.Lock()
         self._fh = open(self.path, "a", encoding="utf-8")
 
-    def append(self, event: Dict[str, Any]) -> None:
+    def append(self, event: dict[str, Any]) -> None:
         line = json.dumps(event, separators=(",", ":"), sort_keys=True)
         with self._lock:
             self._fh.write(line + "\n")
@@ -56,10 +59,10 @@ class FileEventLog(EventLog):
             if self.fsync:
                 os.fsync(self._fh.fileno())
 
-    def replay(self) -> Iterator[Dict[str, Any]]:
+    def replay(self) -> Iterator[dict[str, Any]]:
         if not self.path.exists():
             return
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -68,13 +71,13 @@ class FileEventLog(EventLog):
     def count(self) -> int:
         if not self.path.exists():
             return 0
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, encoding="utf-8") as f:
             return sum(1 for line in f if line.strip())
 
-    def replay_from(self, offset: int = 0) -> Iterator[Dict[str, Any]]:
+    def replay_from(self, offset: int = 0) -> Iterator[dict[str, Any]]:
         if not self.path.exists():
             return
-        with open(self.path, "r", encoding="utf-8") as f:
+        with open(self.path, encoding="utf-8") as f:
             for i, line in enumerate(f):
                 if i < offset:
                     continue
@@ -92,14 +95,14 @@ class InMemoryEventLog(EventLog):
     """For tests and dry runs. Not durable."""
 
     def __init__(self) -> None:
-        self.events: list[Dict[str, Any]] = []
+        self.events: list[dict[str, Any]] = []
         self._lock = threading.Lock()
 
-    def append(self, event: Dict[str, Any]) -> None:
+    def append(self, event: dict[str, Any]) -> None:
         with self._lock:
             self.events.append(event)
 
-    def replay(self) -> Iterator[Dict[str, Any]]:
+    def replay(self) -> Iterator[dict[str, Any]]:
         with self._lock:
             snapshot = list(self.events)
         yield from snapshot
@@ -108,13 +111,13 @@ class InMemoryEventLog(EventLog):
         with self._lock:
             return len(self.events)
 
-    def replay_from(self, offset: int = 0) -> Iterator[Dict[str, Any]]:
+    def replay_from(self, offset: int = 0) -> Iterator[dict[str, Any]]:
         with self._lock:
             snapshot = list(self.events)
         yield from snapshot[offset:]
 
 
-def build_event_log(cfg: Dict[str, Any] | None) -> EventLog | None:
+def build_event_log(cfg: dict[str, Any] | None) -> EventLog | None:
     """
     Build an EventLog from a config dict. Returns None if disabled.
 

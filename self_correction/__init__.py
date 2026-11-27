@@ -1,5 +1,5 @@
-"""Self-correction package re-export."""
+"""Self-correction package re-export (HuggingFace Inference Backend)."""
 
-from .mistral_client import AnomalyDetector, MistralClient, PostTradeReviewer
+from .mistral_client import AnomalyDetector, PostTradeReviewer, Provider
 
-__all__ = ["MistralClient", "PostTradeReviewer", "AnomalyDetector"]
+__all__ = ["Provider", "PostTradeReviewer", "AnomalyDetector"]

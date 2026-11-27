@@ -2,10 +2,17 @@
 """Tests for the durable event log and schema registry (Phase 1)."""
 import json
 from pathlib import Path
+
 import pytest
 
 from core.event_log import FileEventLog, InMemoryEventLog
-from core.schema_registry import registry, register_default_schemas, SchemaError, EventSchema, SchemaRegistry
+from core.schema_registry import (
+    EventSchema,
+    SchemaError,
+    SchemaRegistry,
+    register_default_schemas,
+    registry,
+)
 
 
 def test_file_event_log_roundtrip(tmp_path: Path):

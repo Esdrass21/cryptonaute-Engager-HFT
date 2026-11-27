@@ -16,24 +16,24 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from core.audit import AuditLog
 from core.bus import MessageBus
 from core.config import Clock, Config
 from core.events import EventType, NormalizedEvent, make_event
+from core.keys import EnvKeyProvider, KeyManager
 from core.metrics import Metrics
-from core.keys import KeyManager, EnvKeyProvider
-from core.audit import AuditLog
-
-from risk_management.veto_service import RiskVetoService
-from risk_management.signing import sign_veto
-from strategy_engine.state_machine import StrategyOrchestrator
-from execution.order_manager import OrderManager
 from execution.broker_adapter import PaperBroker
+from execution.order_manager import OrderManager
+from risk_management.signing import sign_veto
+from risk_management.veto_service import RiskVetoService
+from strategy_engine.state_machine import StrategyOrchestrator
 
 
 @pytest.fixture
 def km(tmp_path):
     """KeyManager with a test key."""
-    import base64, os
+    import base64
+    import os
     os.environ["RISK_SIGNING_KEY"] = base64.b64encode(b"test-key-32bytes-long-value-1234567890!!").decode()
     return KeyManager(EnvKeyProvider(), mode="paper")
 
@@ -58,7 +58,9 @@ def test_valid_signed_veto_passes_through_execution(km):
     fsm = StrategyOrchestrator(bus, cfg, clock, metrics, key_manager=km)
     broker = PaperBroker(cfg, clock)
     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
-    veto.start(); fsm.start(); om.start()
+    veto.start()
+    fsm.start()
+    om.start()
 
     fills = []
     bus.subscribe(EventType.ORDER_FILL, lambda e: fills.append(e))
@@ -89,7 +91,9 @@ def test_tampered_veto_is_rejected_fail_closed(km):
     fsm = StrategyOrchestrator(bus, cfg, clock, metrics, key_manager=km)
     broker = PaperBroker(cfg, clock)
     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
-    veto.start(); fsm.start(); om.start()
+    veto.start()
+    fsm.start()
+    om.start()
 
     fills = []
     bus.subscribe(EventType.ORDER_FILL, lambda e: fills.append(e))
@@ -126,7 +130,9 @@ def test_missing_signature_veto_blocked(km):
     fsm = StrategyOrchestrator(bus, cfg, clock, metrics, key_manager=km)
     broker = PaperBroker(cfg, clock)
     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
-    veto.start(); fsm.start(); om.start()
+    veto.start()
+    fsm.start()
+    om.start()
 
     fills = []
     bus.subscribe(EventType.ORDER_FILL, lambda e: fills.append(e))
@@ -153,7 +159,8 @@ def test_missing_signature_veto_blocked(km):
 
 def test_veto_verify_helper_detects_tamper():
     """Verify that sign_veto / verify_veto detect tampering."""
-    import base64, os
+    import base64
+    import os
     os.environ["RISK_SIGNING_KEY"] = base64.b64encode(b"test-key-32bytes-long-value-1234567890!!").decode()
     km = KeyManager(EnvKeyProvider(), mode="paper")
     proposal = {"symbol": "XAUUSD", "position_pct": 1.0, "proposal_id": "p1",

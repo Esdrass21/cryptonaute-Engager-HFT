@@ -18,11 +18,11 @@ from core.bus import MessageBus
 from core.config import Config
 from core.event_log import InMemoryEventLog
 from core.events import make_event
-from core.keys import KeyManager, FileKeyProvider
+from core.keys import FileKeyProvider, KeyManager
 from core.schema_registry import register_default_schemas
+from execution.order_manager import OrderManager
 from risk_management.signing import sign_veto, verify_any
 from strategy_engine.state_machine import StrategyOrchestrator
-from execution.order_manager import OrderManager
 
 
 class _Clock:
@@ -76,7 +76,8 @@ def test_verify_any_accepts_v2(tmp_path: Path):
     assert verify_any(km, event_payload) is True
 
     # tamper the signed payload -> reject
-    tampered = dict(signed); tampered["qty"] = 2.0
+    tampered = dict(signed)
+    tampered["qty"] = 2.0
     assert verify_any(km, {"signature": sig, "signed_payload": tampered}) is False
 
 

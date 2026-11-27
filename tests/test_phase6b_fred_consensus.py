@@ -1,16 +1,22 @@
 import json
 from pathlib import Path
 from unittest.mock import patch
+
 import pytest
 
-from data_ingestion.news_feeds.fred import (
-    FredClient, FredFeed, SERIES_MAP, Observation, _to_float,
-)
 from data_ingestion.news_feeds.consensus import (
-    ConsensusFeed, Consensus, _RELEASE_TO_FXM,
+    _RELEASE_TO_FXM,
+    Consensus,
+    ConsensusFeed,
+)
+from data_ingestion.news_feeds.fred import (
+    SERIES_MAP,
+    FredClient,
+    FredFeed,
+    Observation,
+    _to_float,
 )
 from data_ingestion.news_feeds.retry import HttpClient, _Bucket
-
 
 # ---------- HttpClient / token bucket ------------------------------------ #
 
@@ -115,6 +121,10 @@ def _bus():
 
 
 def test_fred_feed_no_api_key_is_inert():
+    import os
+    # Neutralize any FRED_API_KEY leaked from a parent .env (load_dotenv walks up
+    # directories), so this test is hermetic regardless of the surrounding env.
+    os.environ["FRED_API_KEY"] = ""
     from core.config import Config
     cfg = Config.load()
     bus = _bus()

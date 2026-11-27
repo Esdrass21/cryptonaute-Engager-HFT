@@ -17,8 +17,9 @@ Policy:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from core.audit import AuditLog, AuditRecord, now
 

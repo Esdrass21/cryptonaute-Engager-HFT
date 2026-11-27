@@ -17,7 +17,6 @@ Models:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -74,7 +73,7 @@ class ExecutionModel:
         mid_price: float,
         qty: float,
         ts: float,
-        notional_hint: Optional[float] = None,
+        notional_hint: float | None = None,
     ) -> FillReport:
         rng = self._rng(symbol, ts)
 

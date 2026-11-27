@@ -18,12 +18,11 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from core.keys.provider import (
-    KeyMaterial,
-    KeyProvider,
     EnvKeyProvider,
+    KeyProvider,
     KeyProviderError,
 )
 
@@ -42,7 +41,7 @@ class Signature:
         return {"key_id": self.key_id, "digest_b64": self.digest_b64, "v": self.v}
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "Signature":
+    def from_dict(cls, d: dict[str, Any]) -> Signature:
         return cls(key_id=d["key_id"], digest_b64=d["digest_b64"], v=int(d.get("v", 1)))
 
 

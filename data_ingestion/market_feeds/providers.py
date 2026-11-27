@@ -21,8 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
 
 import requests
 
@@ -30,15 +29,15 @@ from core.config import Clock, Config
 from core.events import NormalizedEvent
 from core.metrics import Metrics
 
-from .feeds import MarketFeed
 from ..normalizer import normalize_candle, normalize_tick
+from .feeds import MarketFeed
 
 log = logging.getLogger("data.providers")
 
 _TIMEFRAMES = {"M1": 60.0, "M5": 300.0, "M15": 900.0, "H1": 3600.0}
 
 
-def _parse_ts(value) -> Optional[float]:
+def _parse_ts(value) -> float | None:
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -52,7 +51,7 @@ def _parse_ts(value) -> Optional[float]:
         pass
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
         try:
-            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp()
+            return datetime.strptime(s, fmt).replace(tzinfo=UTC).timestamp()
         except ValueError:
             continue
     return None
@@ -62,24 +61,24 @@ class ProviderFeed(MarketFeed):
     """Base for REST market-data providers."""
 
     provider_name = "base"
-    DEFAULT_SYMBOL_MAP: Dict[str, Optional[str]] = {}
+    DEFAULT_SYMBOL_MAP: dict[str, str | None] = {}
 
     def __init__(self, bus, cfg: Config, clock: Clock, metrics: Metrics):
         super().__init__(bus, cfg, clock, metrics, name=f"{self.provider_name}.market")
         self.interval = float(cfg.get("data.market.providers.interval_s", 30.0))
         self._session = requests.Session()
         self._session.headers.update(self._headers())
-        self.symbol_map: Dict[str, Optional[str]] = dict(self.DEFAULT_SYMBOL_MAP)
+        self.symbol_map: dict[str, str | None] = dict(self.DEFAULT_SYMBOL_MAP)
         self.symbol_map.update(
             cfg.get(f"data.market.providers.{self.provider_name}.symbol_map", {}) or {}
         )
-        self.extra_params: Dict[str, str] = (
+        self.extra_params: dict[str, str] = (
             cfg.get(f"data.market.providers.{self.provider_name}.params", {}) or {}
         )
-        self._last_bar_ts: Dict[str, float] = {}
+        self._last_bar_ts: dict[str, float] = {}
 
     # ---- provider hooks ------------------------------------------------
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {}
 
     def _base_url(self) -> str:
@@ -88,16 +87,16 @@ class ProviderFeed(MarketFeed):
     def _timeframe_str(self) -> str:
         raise NotImplementedError
 
-    def _request(self, symbol: str, start: Optional[datetime],
-                 end: Optional[datetime], limit: int) -> dict:
+    def _request(self, symbol: str, start: datetime | None,
+                 end: datetime | None, limit: int) -> dict:
         raise NotImplementedError
 
-    def _extract_bars(self, data: dict) -> List[dict]:
+    def _extract_bars(self, data: dict) -> list[dict]:
         """Return list of {ts, open, high, low, close, volume} dicts (ascending)."""
         raise NotImplementedError
 
     # ---- shared plumbing ------------------------------------------------
-    def map_symbol(self, sym: str) -> Optional[str]:
+    def map_symbol(self, sym: str) -> str | None:
         mapped = self.symbol_map.get(sym)
         if mapped is None or (isinstance(mapped, str) and mapped.lower() in ("", "none")):
             log.debug("%s: symbol %s not mapped — skipped", self.provider_name, sym)
@@ -105,16 +104,16 @@ class ProviderFeed(MarketFeed):
         return mapped
 
     def fetch_bars(self, symbol: str, timeframe: str,
-                   start: Optional[datetime] = None,
-                   end: Optional[datetime] = None,
-                   limit: int = 500) -> List[NormalizedEvent]:
+                   start: datetime | None = None,
+                   end: datetime | None = None,
+                   limit: int = 500) -> list[NormalizedEvent]:
         """Fetch closed candles as normalized CANDLE events (ascending by time)."""
         mapped = self.map_symbol(symbol)
         if mapped is None:
             return []
         data = self._request(mapped, start, end, limit)
         bars = self._extract_bars(data)
-        events: List[NormalizedEvent] = []
+        events: list[NormalizedEvent] = []
         for bar in bars:
             ev = normalize_candle(self.provider_name, symbol, timeframe,
                                   open_=bar["open"], high=bar["high"], low=bar["low"],
@@ -156,7 +155,7 @@ class AlpacaFeed(ProviderFeed):
     DEFAULT_SYMBOL_MAP = {"EURUSD": "EUR/USD", "XAUUSD": None, "BTCUSDT": "BTC/USD"}
     _TF = {"M1": "1Min", "M5": "5Min", "M15": "15Min", "H1": "1Hour", "D1": "1Day"}
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         key = os.environ.get("ALPACA_API_KEY", "")
         secret = os.environ.get("ALPACA_API_SECRET", "")
         return {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
@@ -174,10 +173,10 @@ class AlpacaFeed(ProviderFeed):
                 return "crypto"
         return "fx"
 
-    def _request(self, symbol: str, start: Optional[datetime],
-                 end: Optional[datetime], limit: int) -> dict:
+    def _request(self, symbol: str, start: datetime | None,
+                 end: datetime | None, limit: int) -> dict:
         route = self._route(symbol)
-        params: Dict[str, str] = {"symbols": symbol, "timeframe": self._timeframe_str(),
+        params: dict[str, str] = {"symbols": symbol, "timeframe": self._timeframe_str(),
                                   "limit": str(min(limit, 10000))}
         if start:
             params["start"] = start.isoformat()
@@ -191,7 +190,7 @@ class AlpacaFeed(ProviderFeed):
         resp.raise_for_status()
         return resp.json()
 
-    def _extract_bars(self, data: dict) -> List[dict]:
+    def _extract_bars(self, data: dict) -> list[dict]:
         bars = data.get("bars", [])
         if isinstance(bars, dict):  # keyed by symbol
             bars = next(iter(bars.values()), [])
@@ -215,7 +214,7 @@ class TwelveDataFeed(ProviderFeed):
     DEFAULT_SYMBOL_MAP = {"EURUSD": "EUR/USD", "XAUUSD": "XAU/USD", "BTCUSDT": "BTC/USD"}
     _TF = {"M1": "1min", "M5": "5min", "M15": "15min", "H1": "1h", "D1": "1day"}
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {}
 
     def _base_url(self) -> str:
@@ -224,8 +223,8 @@ class TwelveDataFeed(ProviderFeed):
     def _timeframe_str(self) -> str:
         return self._TF.get(self.timeframe, "5min")
 
-    def _request(self, symbol: str, start: Optional[datetime],
-                 end: Optional[datetime], limit: int) -> dict:
+    def _request(self, symbol: str, start: datetime | None,
+                 end: datetime | None, limit: int) -> dict:
         params = {"symbol": symbol, "interval": self._timeframe_str(),
                   "outputsize": str(min(limit, 5000)),
                   "apikey": os.environ.get("TWELVEDATA_API_KEY", "")}
@@ -238,7 +237,7 @@ class TwelveDataFeed(ProviderFeed):
         resp.raise_for_status()
         return resp.json()
 
-    def _extract_bars(self, data: dict) -> List[dict]:
+    def _extract_bars(self, data: dict) -> list[dict]:
         if str(data.get("status", "ok")).lower() == "error":
             raise RuntimeError(str(data.get("message", data)))
         values = data.get("values", []) or []
@@ -262,7 +261,7 @@ class AlphaVantageFeed(ProviderFeed):
     DEFAULT_SYMBOL_MAP = {"EURUSD": "EUR/USD", "XAUUSD": None, "BTCUSDT": "BTC/USD"}
     _TF = {"M1": "1min", "M5": "5min", "M15": "15min", "H1": "60min", "D1": "daily"}
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {}
 
     def _base_url(self) -> str:
@@ -277,10 +276,10 @@ class AlphaVantageFeed(ProviderFeed):
             return "crypto"
         return "fx"
 
-    def _request(self, symbol: str, start: Optional[datetime],
-                 end: Optional[datetime], limit: int) -> dict:
+    def _request(self, symbol: str, start: datetime | None,
+                 end: datetime | None, limit: int) -> dict:
         base, quote = symbol.split("/", 1)
-        params: Dict[str, str] = {"apikey": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
+        params: dict[str, str] = {"apikey": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
                                   "outputsize": "full"}
         if self._route(symbol) == "crypto":
             params.update({"function": "DIGITAL_CURRENCY_DAILY",
@@ -294,7 +293,7 @@ class AlphaVantageFeed(ProviderFeed):
         resp.raise_for_status()
         return resp.json()
 
-    def _extract_bars(self, data: dict) -> List[dict]:
+    def _extract_bars(self, data: dict) -> list[dict]:
         note = data.get("Note") or data.get("Error Message") or data.get("Information")
         if note:
             raise RuntimeError(str(note)[:200])
@@ -306,20 +305,20 @@ class AlphaVantageFeed(ProviderFeed):
         if series is None:
             return []
         out = []
+        def _pick(row, *names: str) -> str | None:
+            for n in names:
+                if n in row:
+                    return row[n]
+            return None
         for ts_str, row in series.items():
             ts = _parse_ts(ts_str)
             if ts is None:
                 continue
-            def _pick(*names: str) -> Optional[str]:
-                for n in names:
-                    if n in row:
-                        return row[n]
-                return None
-            o = _pick("1. open", "1a. open (USD)", "1b. open (USD)")
-            h = _pick("2. high", "2a. high (USD)", "2b. high (USD)")
-            lo = _pick("3. low", "3a. low (USD)", "3b. low (USD)")
-            c = _pick("4. close", "4a. close (USD)", "4b. close (USD)")
-            v = _pick("5. volume", "5. volume (USD)", "6. market cap (USD)")
+            o = _pick(row, "1. open", "1a. open (USD)", "1b. open (USD)")
+            h = _pick(row, "2. high", "2a. high (USD)", "2b. high (USD)")
+            lo = _pick(row, "3. low", "3a. low (USD)", "3b. low (USD)")
+            c = _pick(row, "4. close", "4a. close (USD)", "4b. close (USD)")
+            v = _pick(row, "5. volume", "5. volume (USD)", "6. market cap (USD)")
             if c is None:
                 continue
             out.append({"ts": ts, "open": float(o or c), "high": float(h or c),
@@ -337,7 +336,7 @@ class FinazonFeed(ProviderFeed):
     DEFAULT_SYMBOL_MAP = {"EURUSD": "EURUSD", "XAUUSD": "XAUUSD", "BTCUSDT": "BTCUSDT"}
     _TF = {"M1": "1m", "M5": "5m", "M15": "15m", "H1": "1h", "D1": "1d"}
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         return {}
 
     def _base_url(self) -> str:
@@ -346,9 +345,9 @@ class FinazonFeed(ProviderFeed):
     def _timeframe_str(self) -> str:
         return self._TF.get(self.timeframe, "5m")
 
-    def _request(self, symbol: str, start: Optional[datetime],
-                 end: Optional[datetime], limit: int) -> dict:
-        params: Dict[str, str] = {
+    def _request(self, symbol: str, start: datetime | None,
+                 end: datetime | None, limit: int) -> dict:
+        params: dict[str, str] = {
             "symbol": symbol,
             "interval": self._timeframe_str(),
             "outputsize": str(min(limit, 10000)),
@@ -363,7 +362,7 @@ class FinazonFeed(ProviderFeed):
         resp.raise_for_status()
         return resp.json()
 
-    def _extract_bars(self, data: dict) -> List[dict]:
+    def _extract_bars(self, data: dict) -> list[dict]:
         rows = data.get("data", []) or []
         out = []
         for row in rows:
@@ -395,8 +394,8 @@ def build_provider_feed(name: str, bus, cfg: Config, clock: Clock, metrics: Metr
     return feed
 
 
-def fetch_history(name: str, cfg: Config, symbols: List[str], timeframe: str,
-                  start: str, end: Optional[str]) -> List[NormalizedEvent]:
+def fetch_history(name: str, cfg: Config, symbols: list[str], timeframe: str,
+                  start: str, end: str | None) -> list[NormalizedEvent]:
     """Pull full candle history from a provider (for tools/fetch_history.py)."""
     from core.metrics import Metrics
 
@@ -414,9 +413,9 @@ def fetch_history(name: str, cfg: Config, symbols: List[str], timeframe: str,
     feed._session.headers.update(feed._headers())
     feed._last_bar_ts = {}
 
-    start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
-    end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc) if end else datetime.now(timezone.utc)
-    events: List[NormalizedEvent] = []
+    start_dt = datetime.fromisoformat(start).replace(tzinfo=UTC)
+    end_dt = datetime.fromisoformat(end).replace(tzinfo=UTC) if end else datetime.now(UTC)
+    events: list[NormalizedEvent] = []
     for sym in symbols:
         cursor = start_dt
         while cursor < end_dt:
@@ -431,7 +430,7 @@ def fetch_history(name: str, cfg: Config, symbols: List[str], timeframe: str,
                                              time=ev.timestamp + 0.5))
             if batch:
                 last_ts = batch[-1].timestamp
-                cursor = datetime.fromtimestamp(last_ts, tz=timezone.utc) + timedelta(seconds=1)
+                cursor = datetime.fromtimestamp(last_ts, tz=UTC) + timedelta(seconds=1)
             else:
                 cursor = chunk_end
             if len(batch) < 2:

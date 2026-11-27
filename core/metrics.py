@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 import threading
 from time import monotonic
-from typing import Dict, List, Optional
 
 try:  # pragma: no cover - optional
     from prometheus_client import (
@@ -28,11 +27,12 @@ except Exception:  # noqa: BLE001
     _HAVE_PROM = False
 
 # --- Phase 5: strict catalog validation (dev/CI) ---
-from core.metrics_catalog import MetricKind, spec, validate_usage
+from core.metrics_catalog import MetricKind, validate_usage
+
 _STRICT = os.environ.get("CRYPTONAUTE_STRICT_METRICS", "0") == "1"
 
 
-def _metric_key(name: str, labels: Optional[Dict[str, str]] = None) -> str:
+def _metric_key(name: str, labels: dict[str, str] | None = None) -> str:
     """Flatten a metric + labels into a single flat key: ``name{k=v,...}`` (sorted).
 
     Unlabeled metrics keep their bare name so existing lookups are unchanged.
@@ -48,17 +48,17 @@ class Metrics:
 
     def __init__(self, enable_prometheus: bool = False, port: int = 9100) -> None:
         self._lock = threading.RLock()
-        self._counters: Dict[str, float] = {}
-        self._gauges: Dict[str, float] = {}
-        self._histograms: Dict[str, List[float]] = {}
-        self._prom: Dict[str, object] = {}
+        self._counters: dict[str, float] = {}
+        self._gauges: dict[str, float] = {}
+        self._histograms: dict[str, list[float]] = {}
+        self._prom: dict[str, object] = {}
         self._prom_enabled = enable_prometheus and _HAVE_PROM
         if self._prom_enabled:
             start_http_server(port)
 
     # ---- counters -----------------------------------------------------
     def inc(self, name: str, value: float = 1.0,
-            labels: Optional[Dict[str, str]] = None, **extra_labels: str) -> None:
+            labels: dict[str, str] | None = None, **extra_labels: str) -> None:
         """Increment a counter.
 
         Labels may be supplied as a dict (``labels={"k": "v"}``) or as keyword
@@ -66,7 +66,7 @@ class Metrics:
         Labeled counters are keyed ``name{k=v,...}`` (sorted) so the flat
         snapshot stays deterministic and greppable.
         """
-        merged: Dict[str, str] = {str(k): str(v) for k, v in (labels or {}).items()}
+        merged: dict[str, str] = {str(k): str(v) for k, v in (labels or {}).items()}
         merged.update({str(k): str(v) for k, v in extra_labels.items()})
         # --- Phase 5: strict catalog validation (dev/CI) ---
         if _STRICT:
@@ -77,7 +77,7 @@ class Metrics:
         if self._prom_enabled:
             counter = self._prom.get(name)
             if counter is None:
-                counter = (Counter(name, name, list(sorted(merged))) if merged
+                counter = (Counter(name, name, sorted(merged)) if merged
                            else Counter(name, name))
                 self._prom[name] = counter
             if merged:
@@ -86,7 +86,7 @@ class Metrics:
                 counter.inc(value)  # type: ignore[attr-defined]
 
     # ---- gauges -------------------------------------------------------
-    def set(self, name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+    def set(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
         # --- Phase 5: strict catalog validation (dev/CI) ---
         if _STRICT:
             validate_usage(name, MetricKind.GAUGE, labels.keys() if labels else ())
@@ -116,8 +116,8 @@ class Metrics:
         return _Timer(self, name)
 
     # ---- snapshots ----------------------------------------------------
-    def snapshot(self) -> Dict[str, float]:
-        out: Dict[str, float] = {}
+    def snapshot(self) -> dict[str, float]:
+        out: dict[str, float] = {}
         out.update(self._counters)
         out.update(self._gauges)
         for k, v in self._histograms.items():
@@ -148,7 +148,7 @@ class _Timer:
         self._name = name
         self._start = 0.0
 
-    def __enter__(self) -> "_Timer":
+    def __enter__(self) -> _Timer:
         self._start = monotonic()
         return self
 

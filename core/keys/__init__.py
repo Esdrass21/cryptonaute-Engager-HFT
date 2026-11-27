@@ -1,10 +1,10 @@
 # core/keys/__init__.py
-from core.keys.manager import KeyManager, Signature, SIG_VERSION
+from core.keys.manager import SIG_VERSION, KeyManager, Signature
 from core.keys.provider import (
-    KeyProvider,
-    KeyMaterial,
     EnvKeyProvider,
     FileKeyProvider,
+    KeyMaterial,
+    KeyProvider,
     KeyProviderError,
     build_key_provider,
 )

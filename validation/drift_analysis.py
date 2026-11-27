@@ -40,9 +40,9 @@ import bisect
 import json
 import logging
 import math
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -55,10 +55,10 @@ DEFAULT_HORIZONS_S = [300.0, 900.0, 1800.0, 3600.0, 7200.0, 14400.0]
 # Event loading                                                               #
 # --------------------------------------------------------------------------- #
 
-def _load_events(path: str | Path) -> List[dict]:
+def _load_events(path: str | Path) -> list[dict]:
     """Load a JSONL of events. Accepts dicts or objects with .to_dict()."""
-    out: List[dict] = []
-    with open(path, "r", encoding="utf-8") as fh:
+    out: list[dict] = []
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
@@ -87,24 +87,24 @@ def _normalise(ev: dict) -> dict:
 
 @dataclass
 class PriceSeries:
-    ts: List[float]
-    px: List[float]
+    ts: list[float]
+    px: list[float]
 
-    def at_or_after(self, t: float) -> Optional[float]:
+    def at_or_after(self, t: float) -> float | None:
         i = bisect.bisect_left(self.ts, t)
         if i >= len(self.ts):
             return None
         return self.px[i]
 
-    def at_or_before(self, t: float) -> Optional[float]:
+    def at_or_before(self, t: float) -> float | None:
         i = bisect.bisect_right(self.ts, t) - 1
         if i < 0:
             return None
         return self.px[i]
 
 
-def build_price_series(events: Iterable[dict], symbols: Sequence[str]) -> Dict[str, PriceSeries]:
-    by_sym: Dict[str, List[Tuple[float, float]]] = {s: [] for s in symbols}
+def build_price_series(events: Iterable[dict], symbols: Sequence[str]) -> dict[str, PriceSeries]:
+    by_sym: dict[str, list[tuple[float, float]]] = {s: [] for s in symbols}
     for ev in events:
         e = _normalise(ev)
         if e["type"] not in ("candle", "tick"):
@@ -121,7 +121,7 @@ def build_price_series(events: Iterable[dict], symbols: Sequence[str]) -> Dict[s
         if px is None:
             continue
         by_sym[sym].append((e["ts"], float(px)))
-    out: Dict[str, PriceSeries] = {}
+    out: dict[str, PriceSeries] = {}
     for s, pts in by_sym.items():
         pts.sort(key=lambda x: x[0])
         out[s] = PriceSeries(ts=[p[0] for p in pts], px=[p[1] for p in pts])
@@ -152,14 +152,14 @@ def _annualisation_factor(horizon_s: float) -> float:
 
 def analyse_release(
     release_id: str,
-    releases: List[dict],
+    releases: list[dict],
     series: PriceSeries,
     symbol: str,
     horizons: Sequence[float],
-) -> List[DriftBucket]:
-    buckets: List[DriftBucket] = []
+) -> list[DriftBucket]:
+    buckets: list[DriftBucket] = []
     for h in horizons:
-        signed_rets: List[float] = []
+        signed_rets: list[float] = []
         for r in releases:
             ts = r["ts"]
             surprise = float(r["payload"].get("surprise", 0.0))
@@ -187,13 +187,13 @@ def analyse_release(
 
 
 def analyse(
-    events: List[dict],
+    events: list[dict],
     symbols: Sequence[str],
     horizons: Sequence[float] = tuple(DEFAULT_HORIZONS_S),
     min_obs: int = 8,
-) -> List[DriftBucket]:
+) -> list[DriftBucket]:
     # Collect release_actual events keyed by release_id.
-    by_release: Dict[str, List[dict]] = {}
+    by_release: dict[str, list[dict]] = {}
     for ev in events:
         e = _normalise(ev)
         if e["type"] != "release_actual":
@@ -205,7 +205,7 @@ def analyse(
 
     series = build_price_series(events, symbols)
 
-    buckets: List[DriftBucket] = []
+    buckets: list[DriftBucket] = []
     for rid, rels in by_release.items():
         if len(rels) < min_obs:
             continue
@@ -222,15 +222,15 @@ def analyse(
 # --------------------------------------------------------------------------- #
 
 def suggest_rules(
-    buckets: List[DriftBucket],
+    buckets: list[DriftBucket],
     min_sharpe: float = 0.5,
     min_obs: int = 8,
-) -> Dict[str, dict]:
+) -> dict[str, dict]:
     """
     Return {release_id: {symbol, polarity, holding_s, sl_pct, tp_pct, position_pct}}.
     Only keeps the best horizon per release_id (highest annualised Sharpe).
     """
-    best: Dict[str, DriftBucket] = {}
+    best: dict[str, DriftBucket] = {}
     for b in buckets:
         if b.n < min_obs:
             continue
@@ -240,7 +240,7 @@ def suggest_rules(
         if cur is None or b.sharpe_annualised > cur.sharpe_annualised:
             best[b.release_id] = b
 
-    out: Dict[str, dict] = {}
+    out: dict[str, dict] = {}
     for rid, b in best.items():
         polarity = 1 if b.mean >= 0 else -1
         # Suggest sl from the 5th percentile, tp from a 2x-of-mean heuristic.
@@ -326,7 +326,7 @@ def main() -> None:
         out = Path(args.out)
         out.parent.mkdir(parents=True, exist_ok=True)
         doc = {"strategy": {"release_drift": {"rules": {
-            rid: {k: v for k, v in rule.items()} for rid, rule in suggestions.items()
+            rid: dict(rule.items()) for rid, rule in suggestions.items()
         }}}}
         out.write_text(_yaml.safe_dump(doc, default_flow_style=False, sort_keys=False))
         print(f"\nwrote suggested rules -> {out}")

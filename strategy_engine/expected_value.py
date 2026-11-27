@@ -17,13 +17,9 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Dict
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
+from core.events import EventType, NormalizedEvent, make_event
 
 log = logging.getLogger("strategy.ev")
 
@@ -35,10 +31,10 @@ class ExpectedValueEngine(Component):
         self.min_confidence = float(cfg.get("strategy.ev.min_confidence", 0.6))
         self.calibrated = bool(cfg.get("strategy.ev.calibrated", False))
         # running calibration per symbol: hit-rate + avg win/loss (R-multiple)
-        self._wins: Dict[str, int] = defaultdict(int)
-        self._losses: Dict[str, int] = defaultdict(int)
-        self._avg_win: Dict[str, float] = defaultdict(float)
-        self._avg_loss: Dict[str, float] = defaultdict(float)
+        self._wins: dict[str, int] = defaultdict(int)
+        self._losses: dict[str, int] = defaultdict(int)
+        self._avg_win: dict[str, float] = defaultdict(float)
+        self._avg_loss: dict[str, float] = defaultdict(float)
 
     def start(self) -> None:
         self._running = True

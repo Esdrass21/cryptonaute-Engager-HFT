@@ -1,11 +1,14 @@
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import patch
+
 import pytest
 
 
 class _Clock:
     def __init__(self, t=1000.0, virtual=False):
-        self._t = float(t); self._v = virtual
+        self._t = float(t)
+        self._v = virtual
     def now(self): return self._t
     def advance(self, d): self._t += d
     @property
@@ -73,7 +76,7 @@ def test_parse_ff_ts_with_offset():
     ts = _parse_iso("2026-02-06T08:30:00-05:00")
     assert ts is not None
     from datetime import datetime, timezone
-    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    dt = datetime.fromtimestamp(ts, tz=UTC)
     assert dt.hour == 13 and dt.minute == 30
 
 
@@ -209,7 +212,7 @@ def test_gdelt_ts_parsing():
     ts = parse_gdelt_ts("20260206T143000Z")
     assert ts is not None
     from datetime import datetime, timezone
-    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    dt = datetime.fromtimestamp(ts, tz=UTC)
     assert dt.year == 2026 and dt.month == 2 and dt.day == 6
     assert dt.hour == 14 and dt.minute == 30
 

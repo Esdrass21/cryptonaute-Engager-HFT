@@ -14,8 +14,9 @@ emitters — the default is forward-compatible structural validation.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 
 class SchemaError(ValueError):
@@ -26,14 +27,14 @@ class SchemaError(ValueError):
 class EventSchema:
     type: str
     version: int
-    validate: Callable[[Dict[str, Any]], None]
-    migrate: Optional[Callable[[Dict[str, Any], int], Dict[str, Any]]] = None
+    validate: Callable[[dict[str, Any]], None]
+    migrate: Callable[[dict[str, Any], int], dict[str, Any]] | None = None
 
 
 class SchemaRegistry:
     def __init__(self) -> None:
-        self._schemas: Dict[tuple[str, int], EventSchema] = {}
-        self._latest: Dict[str, int] = {}
+        self._schemas: dict[tuple[str, int], EventSchema] = {}
+        self._latest: dict[str, int] = {}
 
     def is_initialized(self) -> bool:
         return len(self._schemas) > 0
@@ -61,7 +62,7 @@ class SchemaRegistry:
             return event_type in self._latest
         return (event_type, version) in self._schemas
 
-    def validate(self, event: Dict[str, Any]) -> None:
+    def validate(self, event: dict[str, Any]) -> None:
         if "type" not in event:
             raise SchemaError("Event missing 'type' field")
         event_type = event["type"]
@@ -72,7 +73,7 @@ class SchemaRegistry:
         version = int(event.get("version", 1))
         self.get(event_type, version).validate(event)
 
-    def migrate_to_latest(self, event: Dict[str, Any]) -> Dict[str, Any]:
+    def migrate_to_latest(self, event: dict[str, Any]) -> dict[str, Any]:
         event_type = event["type"]
         version = int(event.get("version", 1))
         latest = self.latest_version(event_type)
@@ -90,20 +91,20 @@ class SchemaRegistry:
 registry = SchemaRegistry()
 
 
-def _require_fields(*fields: str) -> Callable[[Dict[str, Any]], None]:
-    def _validate(e: Dict[str, Any]) -> None:
+def _require_fields(*fields: str) -> Callable[[dict[str, Any]], None]:
+    def _validate(e: dict[str, Any]) -> None:
         for f in fields:
             if f not in e:
                 raise SchemaError(f"Missing field {f!r} in {e.get('type')} v{e.get('version', 1)}")
     return _validate
 
 
-def _base_validate(e: Dict[str, Any]) -> None:
+def _base_validate(e: dict[str, Any]) -> None:
     """Validate the NormalizedEvent top-level structure."""
     _require_fields("event_id", "timestamp", "source", "type", "payload", "symbol_impact", "sequence")(e)
 
 
-def _structural_validate(e: Dict[str, Any]) -> None:
+def _structural_validate(e: dict[str, Any]) -> None:
     """
     Default structural validation: top-level shape + payload is a dict.
     Does NOT enforce specific payload keys — that's forward-compatible.
@@ -119,7 +120,7 @@ def register_default_schemas() -> None:
     Idempotent: safe to call more than once.
     """
     all_types = [
-        "tick", "candle", "order_book", "news", "macro",
+        "tick", "candle", "order_book", "news", "macro", "portfolio_var",
         "tech_signal", "regime", "of_signal", "news_score",
         "post_trade_review", "anomaly",
         "composite_signal", "order_proposal",

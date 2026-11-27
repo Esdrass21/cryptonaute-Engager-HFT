@@ -1,12 +1,14 @@
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 
 class _Clock:
     def __init__(self, t=1000.0, virtual=False):
-        self._t = float(t); self._v = virtual
+        self._t = float(t)
+        self._v = virtual
     def now(self): return self._t
     def advance(self, d): self._t += d
     @property

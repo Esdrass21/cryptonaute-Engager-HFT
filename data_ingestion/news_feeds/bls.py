@@ -21,16 +21,11 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 from urllib import request as _req
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .calendar import ReleaseCalendar, ScheduledRelease
 
@@ -68,7 +63,7 @@ _PPI_YOY_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-_PARSERS: Dict[str, re.Pattern] = {
+_PARSERS: dict[str, re.Pattern] = {
     "CPI_YOY":       _CPI_YOY_RE,
     "CPI_MOM":       _CPI_MOM_RE,
     "CORE_CPI_YOY":  _CORE_CPI_YOY_RE,
@@ -78,7 +73,7 @@ _PARSERS: Dict[str, re.Pattern] = {
 }
 
 
-def parse_release(release_id: str, text: str) -> Optional[float]:
+def parse_release(release_id: str, text: str) -> float | None:
     """Return the parsed number, or None if the pattern doesn't match."""
     pattern = _PARSERS.get(release_id)
     if pattern is None:
@@ -93,7 +88,7 @@ def parse_release(release_id: str, text: str) -> Optional[float]:
         return None
 
 
-def _fetch(url: str, timeout: float = 5.0) -> Optional[str]:
+def _fetch(url: str, timeout: float = 5.0) -> str | None:
     """GET a public URL with a proper user-agent. Returns None on failure."""
     try:
         req = _req.Request(url, headers={
@@ -132,7 +127,7 @@ class BLSReleaseFeed(Component):
     def __init__(self, bus, cfg, clock, metrics) -> None:
         super().__init__(bus, cfg, clock, metrics, name="data.bls")
         self.calendar = ReleaseCalendar(cfg)
-        self._pending: Dict[str, _Pending] = {}         # release_id -> state
+        self._pending: dict[str, _Pending] = {}         # release_id -> state
         self._lookahead_s = float(cfg.get("data.news.bls.lookahead_s", 300.0))
         self._arm_before_s = float(cfg.get("data.news.bls.arm_before_s", 120.0))
         self._race_mode = bool(cfg.get("data.news.bls.race_mode", False))

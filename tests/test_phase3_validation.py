@@ -3,13 +3,15 @@
 import numpy as np
 import pytest
 
-from validation.cv import PurgedWalkForward, CombinatorialPurgedKFold
-from validation.metrics import (
-    SharpeStats, probabilistic_sharpe_ratio, expected_max_sharpe_under_null,
-    deflated_sharpe_ratio, probability_of_backtest_overfitting,
-)
+from validation.cv import CombinatorialPurgedKFold, PurgedWalkForward
 from validation.execution_model import ExecutionModel
-
+from validation.metrics import (
+    SharpeStats,
+    deflated_sharpe_ratio,
+    expected_max_sharpe_under_null,
+    probabilistic_sharpe_ratio,
+    probability_of_backtest_overfitting,
+)
 
 # ---------------- CV splitters --------------------------------------------- #
 

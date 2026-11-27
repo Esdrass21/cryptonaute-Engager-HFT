@@ -17,9 +17,9 @@ depends on. For simple next-bar labels, `label_end_idx[i] = i + 1`.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from itertools import combinations
-from typing import Iterator, Sequence
 
 import numpy as np
 

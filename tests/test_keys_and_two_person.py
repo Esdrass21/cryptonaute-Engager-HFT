@@ -4,15 +4,24 @@ import base64
 import json
 import os
 from pathlib import Path
+
 import pytest
 
-from core.keys import KeyManager, EnvKeyProvider, FileKeyProvider, KeyProviderError, build_key_provider
 from core.audit import AuditLog
-from risk_management.two_person import (
-    TwoPersonRule, Approval, TwoPersonError,
-    ACTION_CIRCUIT_BREAKER_RESET, DEFAULT_ALLOWED_ACTIONS,
+from core.keys import (
+    EnvKeyProvider,
+    FileKeyProvider,
+    KeyManager,
+    KeyProviderError,
+    build_key_provider,
 )
-
+from risk_management.two_person import (
+    ACTION_CIRCUIT_BREAKER_RESET,
+    DEFAULT_ALLOWED_ACTIONS,
+    Approval,
+    TwoPersonError,
+    TwoPersonRule,
+)
 
 # -- key manager ------------------------------------------------------------ #
 

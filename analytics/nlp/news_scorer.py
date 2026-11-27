@@ -15,14 +15,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import List
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, NormalizedEvent, make_event
-from core.metrics import Metrics
-
+from core.events import EventType, NormalizedEvent
 from data_ingestion.normalizer import normalize_news_score
 
 log = logging.getLogger("analytics.nlp")
@@ -74,7 +69,7 @@ class NewsScorer(Component):
             symbol_impact=impact, score=score, confidence=conf, explanation=expl, time=self.clock.now()))
         self.metrics.inc("nlp_news_scored")
 
-    def _relevance(self, text: str) -> List[str]:
+    def _relevance(self, text: str) -> list[str]:
         low = text.lower()
         return [sym for sym in self.symbols if any(h in low for h in _SYMBOL_HINTS.get(sym, []))]
 
@@ -91,10 +86,12 @@ class NewsScorer(Component):
         matched = []
         for term, w in _BULLISH.items():
             if re.search(r"\b" + re.escape(term) + r"\b", low):
-                score += w; matched.append(term)
+                score += w
+                matched.append(term)
         for term, w in _BEARISH.items():
             if re.search(r"\b" + re.escape(term) + r"\b", low):
-                score += w; matched.append(term)
+                score += w
+                matched.append(term)
         score = max(-1.0, min(1.0, score))
         conf = min(1.0, abs(score) + 0.1)
         return score, conf, "lexicon:" + ",".join(matched[:4])

@@ -13,9 +13,8 @@ Design
 """
 from __future__ import annotations
 
-import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 
@@ -45,9 +44,9 @@ class OrderBook:
 
     __slots__ = ("bids", "asks")
 
-    def __init__(self, bids: List[DepthLevel], asks: List[DepthLevel]) -> None:
-        self.bids = sorted(bids, key=lambda l: -l.price)
-        self.asks = sorted(asks, key=lambda l: l.price)
+    def __init__(self, bids: list[DepthLevel], asks: list[DepthLevel]) -> None:
+        self.bids = sorted(bids, key=lambda level: -level.price)
+        self.asks = sorted(asks, key=lambda level: level.price)
 
     # ---- accessors ---------------------------------------------------- #
     def best_bid(self) -> float:
@@ -72,9 +71,9 @@ class OrderBook:
     @classmethod
     def from_levels(
         cls,
-        bids: Iterable[Tuple[float, float]],
-        asks: Iterable[Tuple[float, float]],
-    ) -> "OrderBook":
+        bids: Iterable[tuple[float, float]],
+        asks: Iterable[tuple[float, float]],
+    ) -> OrderBook:
         return cls(
             [DepthLevel(p, s) for p, s in bids],
             [DepthLevel(p, s) for p, s in asks],
@@ -134,7 +133,7 @@ def walk_book(
     book: OrderBook,
     side: str,
     notional: float,
-) -> Optional[WalkResult]:
+) -> WalkResult | None:
     """
     Cross the book to fill `notional` (in account currency) on `side`.
 
@@ -187,10 +186,6 @@ def walk_book(
 # --------------------------------------------------------------------------- #
 # Phase 4.5 — limit orders + queue position                                  #
 # --------------------------------------------------------------------------- #
-
-from dataclasses import dataclass, field
-from typing import Optional, Tuple
-
 
 @dataclass
 class RestingOrder:

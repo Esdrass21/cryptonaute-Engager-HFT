@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from enum import StrEnum
+from typing import Any
+
 
 # Canonical event types flowing through the bus, grouped by layer.
-class EventType(str, Enum):
+class EventType(StrEnum):
     # Layer 1 — market
     TICK = "tick"                       # broker/aggregator raw tick
     CANDLE = "candle"                   # OHLCV bar (closed)
@@ -28,8 +29,9 @@ class EventType(str, Enum):
     # Layer 2 — analytics outputs
     TECH_SIGNAL = "tech_signal"         # indicator-derived signal
     REGIME = "regime"                   # market-regime classification
-    OF_SIGNAL = "of_signal"             # order-flow hypothesis signal (validated)
-    NEWS_SCORE = "news_score"           # FinBERT/Mistral sentiment score
+    OF_SIGNAL = "of_signal"                   # order-flow hypothesis signal (validated)
+    CONTEXT = "context"                       # per-instrument market context
+    NEWS_SCORE = "news_score"                 # FinBERT/Mistral sentiment score
     # Layer 3 — self-correction
     POST_TRADE_REVIEW = "post_trade_review"
     ANOMALY = "anomaly"
@@ -45,13 +47,16 @@ class EventType(str, Enum):
     # Layer 6 — risk
     RISK_VETO = "risk_veto"             # signed allow/deny
     RISK_BREACH = "risk_breach"         # circuit-breaker trip
+    PORTFOLIO_VaR = "portfolio_var"     # parametric VaR on the portfolio curve
     # Phase 6 — macro / calendar
     NOWCAST          = "nowcast"           # a probabilistic forecast of a scheduled release
     RELEASE_EXPECTED = "release_expected"  # T-minus reminder for a scheduled release
     RELEASE_ACTUAL   = "release_actual"    # the parsed headline number at publish time
     # Lifecycle / control
     CONTROL = "control"                 # start/stop/pause per symbol
-    METRIC = "metric"                   # observability sample
+    METRIC = "metric"                 # observability sample
+    QUALITY_SCORE = "quality_score"   # trade quality grade per symbol
+    DATA_QUALITY = "data_quality"     # feed health / staleness status
 
     def __str__(self) -> str:  # pragma: no cover - convenience
         return self.value
@@ -87,24 +92,24 @@ class NormalizedEvent:
     timestamp: float = field(default_factory=time.time)
     source: str = "unknown"
     type: str = EventType.TICK.value
-    payload: Dict[str, Any] = field(default_factory=dict)
-    symbol_impact: List[str] = field(default_factory=list)
+    payload: dict[str, Any] = field(default_factory=dict)
+    symbol_impact: list[str] = field(default_factory=list)
     ingested_at: float = field(default_factory=time.time)
     sequence: int = 0
 
     # ---- serialization -------------------------------------------------
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "NormalizedEvent":
+    def from_dict(cls, d: dict[str, Any]) -> NormalizedEvent:
         # Tolerate legacy keys gracefully.
         d = dict(d)
         d.pop("ingested_at", None)
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
     # ---- helpers -------------------------------------------------------
-    def with_timestamp(self, ts: float) -> "NormalizedEvent":
+    def with_timestamp(self, ts: float) -> NormalizedEvent:
         """Return a copy stamped at ``ts`` (replay harness uses this)."""
         return NormalizedEvent(
             event_id=self.event_id,
@@ -120,11 +125,11 @@ class NormalizedEvent:
 def make_event(
     type: EventType | str,
     source: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
-    symbol_impact: Optional[List[str]] = None,
-    timestamp: Optional[float] = None,
-    event_id: Optional[str] = None,
+    symbol_impact: list[str] | None = None,
+    timestamp: float | None = None,
+    event_id: str | None = None,
     sequence: int = 0,
 ) -> NormalizedEvent:
     """Ergonomic constructor used by producers across all layers."""

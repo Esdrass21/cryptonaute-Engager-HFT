@@ -1,9 +1,12 @@
 """Chaos: rotate the key while signatures are in flight. Old signatures must
 still verify; new signatures must use the new key."""
-import base64, json
+import base64
+import json
 from pathlib import Path
+
 import pytest
-from core.keys import KeyManager, FileKeyProvider
+
+from core.keys import FileKeyProvider, KeyManager
 from risk_management.signing import sign_veto, verify_any
 
 pytestmark = pytest.mark.chaos

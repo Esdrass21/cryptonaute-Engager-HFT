@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import math
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.bus import MessageBus
-from core.config import Config, Clock
+from core.config import Clock, Config
 from core.events import EventType, make_event
 from core.metrics import Metrics
 from strategy_engine.noise_band import NoiseBandStrategy

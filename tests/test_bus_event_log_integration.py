@@ -1,10 +1,11 @@
 # tests/test_bus_event_log_integration.py
 """Integration tests: bus publishes -> event log persists."""
 import pytest
+
 from core.bus import MessageBus
 from core.event_log import InMemoryEventLog
+from core.events import EventType, make_event
 from core.schema_registry import register_default_schemas
-from core.events import make_event, EventType
 
 
 def test_bus_persists_before_dispatch():

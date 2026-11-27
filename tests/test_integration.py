@@ -7,11 +7,11 @@ Risk Veto -> Execution produces fills, and that the risk veto can block orders.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
 import pytest
-import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -96,19 +96,20 @@ def test_replay_is_deterministic():
     e2 = _build_events()
     h1 = ReplayHarness(cfg, e1)
     h2 = ReplayHarness(cfg, e2)
-    h1.run();
+    h1.run()
     h2.run()
     assert h1.metrics.snapshot() == h2.metrics.snapshot(), "replay not deterministic"
-    h1.stop_all(); h2.stop_all()
+    h1.stop_all()
+    h2.stop_all()
 
 
 def test_trade_journal_logs_fill_and_close(caplog):
     """The trade journal must emit one clean FILL/CLOSE log line per trade action."""
-    from execution.trade_journal import TradeJournal
-    from core.config import Clock, Config, setup_logging
     from core.bus import MessageBus
-    from core.metrics import Metrics
+    from core.config import Clock, Config, setup_logging
     from core.events import EventType, make_event
+    from core.metrics import Metrics
+    from execution.trade_journal import TradeJournal
 
     setup_logging("INFO")  # mirrors real runtime
     bus = MessageBus()
@@ -123,16 +124,17 @@ def test_trade_journal_logs_fill_and_close(caplog):
                           "price": 1.07, "ticket": 1, "closed": True, "pnl": 4.0,
                           "price_entry": 1.05}))
     lines = [r.getMessage() for r in caplog.records if r.name == "execution.journal"]
-    fills = [l for l in lines if l.startswith("FILL")]
-    closes = [l for l in lines if l.startswith("CLOSE")]
+    fills = [line for line in lines if line.startswith("FILL")]
+    closes = [line for line in lines if line.startswith("CLOSE")]
     assert len(fills) == 1 and len(closes) == 1
     assert "pnl=+4.00" in closes[0]
 
 
 def test_transitions_logger_is_silenced():
     """FSM state-machine engine must not INFO-spam the console (verified in live runs)."""
-    from core.config import setup_logging
     import logging
+
+    from core.config import setup_logging
 
     setup_logging("INFO")  # real runtime path that silences the FSM engine
     # the transitions logger is set to WARNING; even though its own .level reads 0 (NOTSET),

@@ -15,15 +15,11 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from typing import Deque, Dict, List
 
 import numpy as np
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 log = logging.getLogger("analytics.order_flow")
 
@@ -33,7 +29,7 @@ class OrderFlowAnalytics(Component):
         super().__init__(bus, cfg, clock, metrics, name="analytics.order_flow")
         self.enabled = enabled
         self.validated_only = cfg.get("analytics.order_flow.validated_only", True)
-        self._books: Dict[str, Deque] = defaultdict(lambda: deque(maxlen=50))
+        self._books: dict[str, deque] = defaultdict(lambda: deque(maxlen=50))
 
     def start(self) -> None:
         self._running = True
@@ -57,7 +53,7 @@ class OrderFlowAnalytics(Component):
             symbol_impact=[sym], timestamp=self.clock.now()))
         self.metrics.inc("of_signal_emitted")
 
-    def ict_detect(self, candles: List[dict]) -> dict:
+    def ict_detect(self, candles: list[dict]) -> dict:
         """Coded but DISABLED by default. Returns an ICT hypothesis dict.
 
         Exists so you can validate it in the backtester (validation/) and, once your §7.3

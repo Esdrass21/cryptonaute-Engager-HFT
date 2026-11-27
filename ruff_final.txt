@@ -1,0 +1,1044 @@
+E702 Multiple statements on one line (semicolon)
+  --> analytics\nlp\news_scorer.py:89:27
+   |
+87 |         for term, w in _BULLISH.items():
+88 |             if re.search(r"\b" + re.escape(term) + r"\b", low):
+89 |                 score += w; matched.append(term)
+   |                           ^
+90 |         for term, w in _BEARISH.items():
+91 |             if re.search(r"\b" + re.escape(term) + r"\b", low):
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> analytics\nlp\news_scorer.py:92:27
+   |
+90 |         for term, w in _BEARISH.items():
+91 |             if re.search(r"\b" + re.escape(term) + r"\b", low):
+92 |                 score += w; matched.append(term)
+   |                           ^
+93 |         score = max(-1.0, min(1.0, score))
+94 |         conf = min(1.0, abs(score) + 0.1)
+   |
+
+E741 Ambiguous variable name: `l`
+  --> analytics\quant\indicators.py:30:5
+   |
+28 |     o: float
+29 |     h: float
+30 |     l: float
+   |     ^
+31 |     c: float
+32 |     v: float
+   |
+
+F841 Local variable `delta` is assigned to but never used
+   --> analytics\quant\indicators.py:155:9
+    |
+153 |             return 50.0
+154 |         prev = buf[-1]
+155 |         delta = price - prev
+    |         ^^^^^
+156 |         if len(buf) <= n:                      # warm-up: simple rolling window
+157 |             buf.append(price)
+    |
+help: Remove assignment to unused variable `delta`
+
+F841 Local variable `c` is assigned to but never used
+   --> analytics\quant\indicators.py:170:9
+    |
+168 |     def _emit_signal(self, sym: str) -> None:
+169 |         bars = self._candles[sym]
+170 |         c = bars[-1].c
+    |         ^
+171 |         # state (EMA/RSI) already updated per-candle in on_candle; read it here.
+172 |         ma_f = self._ema_f[sym]
+    |
+help: Remove assignment to unused variable `c`
+
+F841 Local variable `ma_dir` is assigned to but never used
+   --> analytics\quant\indicators.py:174:9
+    |
+172 |         ma_f = self._ema_f[sym]
+173 |         ma_s = self._ema_s[sym]
+174 |         ma_dir = 1.0 if ma_f > ma_s else -1.0
+    |         ^^^^^^
+175 |         # Trend conviction = (fast-slow EMA gap) normalized by recent volatility — a
+176 |         # "trend z-score". Persistent drift produces a stable, strong conviction in [-1, 1].
+    |
+help: Remove assignment to unused variable `ma_dir`
+
+B027 `EventLog.close` is an empty method in an abstract base class, but has no abstract decorator
+  --> core\event_log.py:38:5
+   |
+36 |       def replay_from(self, offset: int = 0) -> Iterator[dict[str, Any]]: ...
+37 |
+38 | /     def close(self) -> None:  # pragma: no cover - default no-op
+39 | |         """No-op close ({DefaultEventLog).close).
+40 | |
+41 | |         Subclasses should release resources; the default is a no-op.
+42 | |         """
+43 | |         pass
+   | |____________^
+
+B023 Function definition does not bind loop variable `row`
+   --> data_ingestion\market_feeds\providers.py:314:29
+    |
+312 |             def _pick(*names: str) -> str | None:
+313 |                 for n in names:
+314 |                     if n in row:
+    |                             ^^^
+315 |                         return row[n]
+316 |                 return None
+    |
+
+B023 Function definition does not bind loop variable `row`
+   --> data_ingestion\market_feeds\providers.py:315:32
+    |
+313 |                 for n in names:
+314 |                     if n in row:
+315 |                         return row[n]
+    |                                ^^^
+316 |                 return None
+317 |             o = _pick("1. open", "1a. open (USD)", "1b. open (USD)")
+    |
+
+E741 Ambiguous variable name: `l`
+   --> data_ingestion\news_feeds\zillow.py:283:24
+    |
+281 |         except Exception:  # noqa: BLE001
+282 |             return None
+283 |         lines = [l for l in resp.text.splitlines() if l and not l.startswith("DATE")]
+    |                        ^
+284 |         if len(lines) < 2:
+285 |             return None
+    |
+
+E741 Ambiguous variable name: `l`
+  --> execution\book.py:48:45
+   |
+47 |     def __init__(self, bids: list[DepthLevel], asks: list[DepthLevel]) -> None:
+48 |         self.bids = sorted(bids, key=lambda l: -l.price)
+   |                                             ^
+49 |         self.asks = sorted(asks, key=lambda l: l.price)
+   |
+
+E741 Ambiguous variable name: `l`
+  --> execution\book.py:49:45
+   |
+47 |     def __init__(self, bids: list[DepthLevel], asks: list[DepthLevel]) -> None:
+48 |         self.bids = sorted(bids, key=lambda l: -l.price)
+49 |         self.asks = sorted(asks, key=lambda l: l.price)
+   |                                             ^
+50 |
+51 |     # ---- accessors ---------------------------------------------------- #
+   |
+
+E402 Module level import not at top of file
+   --> execution\book.py:190:1
+    |
+188 | # --------------------------------------------------------------------------- #
+189 |
+190 | from dataclasses import dataclass
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Move module level imports to top of file
+
+E741 Ambiguous variable name: `l`
+   --> execution\broker_adapter.py:312:29
+    |
+310 |     def _queue_depth_at(book: OrderBook, side: str, limit_price: float) -> float:
+311 |         if side == "buy":
+312 |             levels = [l for l in book.bids if l.price >= limit_price]
+    |                             ^
+313 |         else:
+314 |             levels = [l for l in book.asks if l.price <= limit_price]
+    |
+
+E741 Ambiguous variable name: `l`
+   --> execution\broker_adapter.py:314:29
+    |
+312 |             levels = [l for l in book.bids if l.price >= limit_price]
+313 |         else:
+314 |             levels = [l for l in book.asks if l.price <= limit_price]
+    |                             ^
+315 |         return sum(l.notional for l in levels)
+    |
+
+E741 Ambiguous variable name: `l`
+   --> execution\broker_adapter.py:315:35
+    |
+313 |         else:
+314 |             levels = [l for l in book.asks if l.price <= limit_price]
+315 |         return sum(l.notional for l in levels)
+    |                                   ^
+316 |
+317 |     def _synthesize_trade_volume(self, prev_mid: float, new_mid: float) -> float:
+    |
+
+F841 Local variable `tag` is assigned to but never used
+  --> execution\trade_journal.py:46:13
+   |
+44 |             self._open_pnl[sym] = self._open_pnl.get(sym, 0.0) + pnl
+45 |             net = self._open_pnl[sym]
+46 |             tag = "WIN " if pnl >= 0 else "LOSS"
+   |             ^^^
+47 |             log.info("CLOSE %s %s @ %.5f  pnl=%+.2f  net=%+.2f  ticket=%s",
+48 |                      sym, side, px, pnl, net, p.get("ticket"))
+   |
+help: Remove assignment to unused variable `tag`
+
+E402 Module level import not at top of file
+  --> main.py:35:1
+   |
+33 | # --- core ---
+34 | # --- layers ---
+35 | from analytics.classic.macro import MacroAnalytics
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+36 | from analytics.nlp.news_scorer import NewsScorer
+37 | from analytics.order_flow.orderbook import OrderFlowAnalytics
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:36:1
+   |
+34 | # --- layers ---
+35 | from analytics.classic.macro import MacroAnalytics
+36 | from analytics.nlp.news_scorer import NewsScorer
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+37 | from analytics.order_flow.orderbook import OrderFlowAnalytics
+38 | from analytics.quant.indicators import QuantAnalytics
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:37:1
+   |
+35 | from analytics.classic.macro import MacroAnalytics
+36 | from analytics.nlp.news_scorer import NewsScorer
+37 | from analytics.order_flow.orderbook import OrderFlowAnalytics
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+38 | from analytics.quant.indicators import QuantAnalytics
+39 | from analytics.quant.regime import RegimeDetector
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:38:1
+   |
+36 | from analytics.nlp.news_scorer import NewsScorer
+37 | from analytics.order_flow.orderbook import OrderFlowAnalytics
+38 | from analytics.quant.indicators import QuantAnalytics
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+39 | from analytics.quant.regime import RegimeDetector
+40 | from core.audit import AuditLog
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:39:1
+   |
+37 | from analytics.order_flow.orderbook import OrderFlowAnalytics
+38 | from analytics.quant.indicators import QuantAnalytics
+39 | from analytics.quant.regime import RegimeDetector
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+40 | from core.audit import AuditLog
+41 | from core.bus import MessageBus
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:40:1
+   |
+38 | from analytics.quant.indicators import QuantAnalytics
+39 | from analytics.quant.regime import RegimeDetector
+40 | from core.audit import AuditLog
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+41 | from core.bus import MessageBus
+42 | from core.checkpoint import Checkpoint, CheckpointState
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:41:1
+   |
+39 | from analytics.quant.regime import RegimeDetector
+40 | from core.audit import AuditLog
+41 | from core.bus import MessageBus
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+42 | from core.checkpoint import Checkpoint, CheckpointState
+43 | from core.component import Component
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:42:1
+   |
+40 | from core.audit import AuditLog
+41 | from core.bus import MessageBus
+42 | from core.checkpoint import Checkpoint, CheckpointState
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+43 | from core.component import Component
+44 | from core.config import Clock, Config, setup_logging
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:43:1
+   |
+41 | from core.bus import MessageBus
+42 | from core.checkpoint import Checkpoint, CheckpointState
+43 | from core.component import Component
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 | from core.config import Clock, Config, setup_logging
+45 | from core.event_log import EventLog, build_event_log
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:44:1
+   |
+42 | from core.checkpoint import Checkpoint, CheckpointState
+43 | from core.component import Component
+44 | from core.config import Clock, Config, setup_logging
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+45 | from core.event_log import EventLog, build_event_log
+46 | from core.keys import KeyManager, build_key_provider
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:45:1
+   |
+43 | from core.component import Component
+44 | from core.config import Clock, Config, setup_logging
+45 | from core.event_log import EventLog, build_event_log
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+46 | from core.keys import KeyManager, build_key_provider
+47 | from core.metrics import Metrics
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:46:1
+   |
+44 | from core.config import Clock, Config, setup_logging
+45 | from core.event_log import EventLog, build_event_log
+46 | from core.keys import KeyManager, build_key_provider
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+47 | from core.metrics import Metrics
+48 | from core.schema_registry import register_default_schemas
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:47:1
+   |
+45 | from core.event_log import EventLog, build_event_log
+46 | from core.keys import KeyManager, build_key_provider
+47 | from core.metrics import Metrics
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+48 | from core.schema_registry import register_default_schemas
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:48:1
+   |
+46 | from core.keys import KeyManager, build_key_provider
+47 | from core.metrics import Metrics
+48 | from core.schema_registry import register_default_schemas
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+49 |
+50 | # --- validation harness ---
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:51:1
+   |
+50 | # --- validation harness ---
+51 | from data_ingestion.generate_sample import generate, load_jsonl, write_jsonl
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+52 | from data_ingestion.market_feeds.feeds import build_market_feed
+53 | from data_ingestion.news_feeds.feeds import build_news_feed
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:52:1
+   |
+50 | # --- validation harness ---
+51 | from data_ingestion.generate_sample import generate, load_jsonl, write_jsonl
+52 | from data_ingestion.market_feeds.feeds import build_market_feed
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+53 | from data_ingestion.news_feeds.feeds import build_news_feed
+54 | from execution.order_manager import OrderManager
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:53:1
+   |
+51 | from data_ingestion.generate_sample import generate, load_jsonl, write_jsonl
+52 | from data_ingestion.market_feeds.feeds import build_market_feed
+53 | from data_ingestion.news_feeds.feeds import build_news_feed
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+54 | from execution.order_manager import OrderManager
+55 | from execution.trade_journal import TradeJournal
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:54:1
+   |
+52 | from data_ingestion.market_feeds.feeds import build_market_feed
+53 | from data_ingestion.news_feeds.feeds import build_news_feed
+54 | from execution.order_manager import OrderManager
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+55 | from execution.trade_journal import TradeJournal
+56 | from risk_management.circuit_breaker import CircuitBreaker
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:55:1
+   |
+53 | from data_ingestion.news_feeds.feeds import build_news_feed
+54 | from execution.order_manager import OrderManager
+55 | from execution.trade_journal import TradeJournal
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+56 | from risk_management.circuit_breaker import CircuitBreaker
+57 | from risk_management.portfolio_optimizer import PortfolioOptimizer
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:56:1
+   |
+54 | from execution.order_manager import OrderManager
+55 | from execution.trade_journal import TradeJournal
+56 | from risk_management.circuit_breaker import CircuitBreaker
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+57 | from risk_management.portfolio_optimizer import PortfolioOptimizer
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:57:1
+   |
+55 | from execution.trade_journal import TradeJournal
+56 | from risk_management.circuit_breaker import CircuitBreaker
+57 | from risk_management.portfolio_optimizer import PortfolioOptimizer
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+58 |
+59 | # --- risk: two-person rule ---
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:60:1
+   |
+59 | # --- risk: two-person rule ---
+60 | from risk_management.two_person import DEFAULT_ALLOWED_ACTIONS, TwoPersonRule
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+61 | from risk_management.veto_service import RiskVetoService
+62 | from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:61:1
+   |
+59 | # --- risk: two-person rule ---
+60 | from risk_management.two_person import DEFAULT_ALLOWED_ACTIONS, TwoPersonRule
+61 | from risk_management.veto_service import RiskVetoService
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+62 | from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
+63 | from strategy_engine.expected_value import ExpectedValueEngine
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:62:1
+   |
+60 | from risk_management.two_person import DEFAULT_ALLOWED_ACTIONS, TwoPersonRule
+61 | from risk_management.veto_service import RiskVetoService
+62 | from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+63 | from strategy_engine.expected_value import ExpectedValueEngine
+64 | from strategy_engine.signal_fusion import SignalFusion
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:63:1
+   |
+61 | from risk_management.veto_service import RiskVetoService
+62 | from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
+63 | from strategy_engine.expected_value import ExpectedValueEngine
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+64 | from strategy_engine.signal_fusion import SignalFusion
+65 | from strategy_engine.state_machine import StrategyOrchestrator
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:64:1
+   |
+62 | from self_correction.mistral_client import AnomalyDetector, PostTradeReviewer
+63 | from strategy_engine.expected_value import ExpectedValueEngine
+64 | from strategy_engine.signal_fusion import SignalFusion
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+65 | from strategy_engine.state_machine import StrategyOrchestrator
+66 | from validation.engine import monte_carlo, vectorized_backtest, walk_forward
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:65:1
+   |
+63 | from strategy_engine.expected_value import ExpectedValueEngine
+64 | from strategy_engine.signal_fusion import SignalFusion
+65 | from strategy_engine.state_machine import StrategyOrchestrator
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+66 | from validation.engine import monte_carlo, vectorized_backtest, walk_forward
+67 | from validation.replay_harness import ReplayHarness
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:66:1
+   |
+64 | from strategy_engine.signal_fusion import SignalFusion
+65 | from strategy_engine.state_machine import StrategyOrchestrator
+66 | from validation.engine import monte_carlo, vectorized_backtest, walk_forward
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+67 | from validation.replay_harness import ReplayHarness
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> main.py:67:1
+   |
+65 | from strategy_engine.state_machine import StrategyOrchestrator
+66 | from validation.engine import monte_carlo, vectorized_backtest, walk_forward
+67 | from validation.replay_harness import ReplayHarness
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+68 |
+69 | log = logging.getLogger("main")
+   |
+help: Move module level imports to top of file
+
+F841 Local variable `sym` is assigned to but never used
+   --> risk_management\veto_service.py:112:9
+    |
+110 |     # ---- evaluation ---------------------------------------------------
+111 |     def _evaluate(self, proposal: dict) -> tuple[str, list[str]]:
+112 |         sym = proposal.get("symbol")
+    |         ^^^
+113 |         reasons: list[str] = []
+114 |         pos_pct = abs(proposal.get("position_pct", self.max_pos_pct))
+    |
+help: Remove assignment to unused variable `sym`
+
+F821 Undefined name `load_dotenv`
+  --> scripts\validate_binance_order.py:22:1
+   |
+20 | sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+21 |
+22 | load_dotenv()  # pull BINANCE_API_KEY / BINANCE_API_SECRET from .env
+   | ^^^^^^^^^^^
+23 |
+24 | import ccxt
+   |
+
+E402 Module level import not at top of file
+  --> scripts\validate_binance_order.py:24:1
+   |
+22 | load_dotenv()  # pull BINANCE_API_KEY / BINANCE_API_SECRET from .env
+23 |
+24 | import ccxt
+   | ^^^^^^^^^^^
+25 |
+26 | from core.config import Config
+   |
+help: Move module level imports to top of file
+
+E402 Module level import not at top of file
+  --> scripts\validate_binance_order.py:26:1
+   |
+24 | import ccxt
+25 |
+26 | from core.config import Config
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: Move module level imports to top of file
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\chaos\test_signature_tamper.py:45:28
+   |
+44 |     # Tamper the payload AFTER signing.
+45 |     tampered = dict(signed); tampered["qty"] = 99.0
+   |                            ^
+46 |
+47 |     forwarded = []
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_governance.py:61:17
+   |
+59 |     broker = PaperBroker(cfg, clock)
+60 |     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
+61 |     veto.start(); fsm.start(); om.start()
+   |                 ^
+62 |
+63 |     fills = []
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_governance.py:61:30
+   |
+59 |     broker = PaperBroker(cfg, clock)
+60 |     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
+61 |     veto.start(); fsm.start(); om.start()
+   |                              ^
+62 |
+63 |     fills = []
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_governance.py:92:17
+   |
+90 |     broker = PaperBroker(cfg, clock)
+91 |     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
+92 |     veto.start(); fsm.start(); om.start()
+   |                 ^
+93 |
+94 |     fills = []
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_governance.py:92:30
+   |
+90 |     broker = PaperBroker(cfg, clock)
+91 |     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
+92 |     veto.start(); fsm.start(); om.start()
+   |                              ^
+93 |
+94 |     fills = []
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_governance.py:129:17
+    |
+127 |     broker = PaperBroker(cfg, clock)
+128 |     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
+129 |     veto.start(); fsm.start(); om.start()
+    |                 ^
+130 |
+131 |     fills = []
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_governance.py:129:30
+    |
+127 |     broker = PaperBroker(cfg, clock)
+128 |     om = OrderManager(bus, cfg, clock, metrics, broker=broker, key_manager=km)
+129 |     veto.start(); fsm.start(); om.start()
+    |                              ^
+130 |
+131 |     fills = []
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_integration.py:102:18
+    |
+100 |     h2.run()
+101 |     assert h1.metrics.snapshot() == h2.metrics.snapshot(), "replay not deterministic"
+102 |     h1.stop_all(); h2.stop_all()
+    |                  ^
+
+E741 Ambiguous variable name: `l`
+   --> tests\test_integration.py:126:20
+    |
+124 |                           "price_entry": 1.05}))
+125 |     lines = [r.getMessage() for r in caplog.records if r.name == "execution.journal"]
+126 |     fills = [l for l in lines if l.startswith("FILL")]
+    |                    ^
+127 |     closes = [l for l in lines if l.startswith("CLOSE")]
+128 |     assert len(fills) == 1 and len(closes) == 1
+    |
+
+E741 Ambiguous variable name: `l`
+   --> tests\test_integration.py:127:21
+    |
+125 |     lines = [r.getMessage() for r in caplog.records if r.name == "execution.journal"]
+126 |     fills = [l for l in lines if l.startswith("FILL")]
+127 |     closes = [l for l in lines if l.startswith("CLOSE")]
+    |                     ^
+128 |     assert len(fills) == 1 and len(closes) == 1
+129 |     assert "pnl=+4.00" in closes[0]
+    |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_l4_l5_verification.py:79:28
+   |
+78 |     # tamper the signed payload -> reject
+79 |     tampered = dict(signed); tampered["qty"] = 2.0
+   |                            ^
+80 |     assert verify_any(km, {"signature": sig, "signed_payload": tampered}) is False
+   |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_layers.py:136:17
+    |
+134 |     fsm = SymbolFSM("EURUSD")
+135 |     assert fsm.state == "idle"
+136 |     fsm.detect(); assert fsm.state == "signal_detected"
+    |                 ^
+137 |     fsm.confirm(); assert fsm.state == "confirmed"
+138 |     fsm.open(); fsm.manage(); assert fsm.state == "managing"
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_layers.py:137:18
+    |
+135 |     assert fsm.state == "idle"
+136 |     fsm.detect(); assert fsm.state == "signal_detected"
+137 |     fsm.confirm(); assert fsm.state == "confirmed"
+    |                  ^
+138 |     fsm.open(); fsm.manage(); assert fsm.state == "managing"
+139 |     fsm.close(); fsm.reset(); assert fsm.state == "idle"
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_layers.py:138:15
+    |
+136 |     fsm.detect(); assert fsm.state == "signal_detected"
+137 |     fsm.confirm(); assert fsm.state == "confirmed"
+138 |     fsm.open(); fsm.manage(); assert fsm.state == "managing"
+    |               ^
+139 |     fsm.close(); fsm.reset(); assert fsm.state == "idle"
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_layers.py:138:29
+    |
+136 |     fsm.detect(); assert fsm.state == "signal_detected"
+137 |     fsm.confirm(); assert fsm.state == "confirmed"
+138 |     fsm.open(); fsm.manage(); assert fsm.state == "managing"
+    |                             ^
+139 |     fsm.close(); fsm.reset(); assert fsm.state == "idle"
+    |
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_layers.py:139:16
+    |
+137 |     fsm.confirm(); assert fsm.state == "confirmed"
+138 |     fsm.open(); fsm.manage(); assert fsm.state == "managing"
+139 |     fsm.close(); fsm.reset(); assert fsm.state == "idle"
+    |                ^
+
+E702 Multiple statements on one line (semicolon)
+   --> tests\test_layers.py:139:29
+    |
+137 |     fsm.confirm(); assert fsm.state == "confirmed"
+138 |     fsm.open(); fsm.manage(); assert fsm.state == "managing"
+139 |     fsm.close(); fsm.reset(); assert fsm.state == "idle"
+    |                             ^
+
+F841 Local variable `failing` is assigned to but never used
+   --> tests\test_layers.py:158:5
+    |
+156 |     cfg = Config.load()
+157 |     clock = Clock()
+158 |     failing = PaperBroker(cfg, clock)
+    |     ^^^^^^^
+159 |
+160 |     class Flaky(PaperBroker):
+    |
+help: Remove assignment to unused variable `failing`
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_notifications.py:18:57
+   |
+17 | class _Clock:
+18 |     def __init__(self, virtual=False): self._v = virtual; self._t = 1000.0
+   |                                                         ^
+19 |     def now(self): return self._t
+20 |     @property
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase3_integration.py:54:36
+   |
+52 |     cfg = _cfg(tmp_path)
+53 |     events = _synth_history(400)
+54 |     h1 = ReplayHarness(cfg, events); h1.run()
+   |                                    ^
+55 |     h2 = ReplayHarness(cfg, events); h2.run()
+56 |     # Same recorded events -> same number of equity samples.
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase3_integration.py:55:36
+   |
+53 |     events = _synth_history(400)
+54 |     h1 = ReplayHarness(cfg, events); h1.run()
+55 |     h2 = ReplayHarness(cfg, events); h2.run()
+   |                                    ^
+56 |     # Same recorded events -> same number of equity samples.
+57 |     assert len(h1.equity_curve()) == len(h2.equity_curve())
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase3_integration.py:65:35
+   |
+63 |     cfg = _cfg(tmp_path)
+64 |     events = _synth_history(400)
+65 |     h = ReplayHarness(cfg, events); h.run()
+   |                                   ^
+66 |     for ts, pnl in h.trade_records():
+67 |         assert isinstance(ts, float)
+   |
+
+F841 Local variable `res` is assigned to but never used
+   --> tests\test_phase4_5_limit_orders.py:104:5
+    |
+102 |                      _Clock(1.0), starting_balance=10_000.0)
+103 |     br.update_price("X", 100.0)
+104 |     res = br.send_limit_order("X", "buy", limit_price=99.98, notional=200.0, ttl_s=100.0)
+    |     ^^^
+105 |     # Sweep hard below the limit.
+106 |     br.update_price("X", 95.0)
+    |
+help: Remove assignment to unused variable `res`
+
+E741 Ambiguous variable name: `l`
+  --> tests\test_phase4_paper_broker.py:68:25
+   |
+66 |     a = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
+67 |     b = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
+68 |     assert [l.price for l in a.bids] == [l.price for l in b.bids]
+   |                         ^
+69 |     assert [l.size for l in a.asks] == [l.size for l in b.asks]
+   |
+
+E741 Ambiguous variable name: `l`
+  --> tests\test_phase4_paper_broker.py:68:54
+   |
+66 |     a = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
+67 |     b = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
+68 |     assert [l.price for l in a.bids] == [l.price for l in b.bids]
+   |                                                      ^
+69 |     assert [l.size for l in a.asks] == [l.size for l in b.asks]
+   |
+
+E741 Ambiguous variable name: `l`
+  --> tests\test_phase4_paper_broker.py:69:24
+   |
+67 |     b = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
+68 |     assert [l.price for l in a.bids] == [l.price for l in b.bids]
+69 |     assert [l.size for l in a.asks] == [l.size for l in b.asks]
+   |                        ^
+
+E741 Ambiguous variable name: `l`
+  --> tests\test_phase4_paper_broker.py:69:52
+   |
+67 |     b = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
+68 |     assert [l.price for l in a.bids] == [l.price for l in b.bids]
+69 |     assert [l.size for l in a.asks] == [l.size for l in b.asks]
+   |                                                    ^
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase6c_cpi_fed_drift.py:22:27
+   |
+20 | class _Clock:
+21 |     def __init__(self, t=1000.0, virtual=False):
+22 |         self._t = float(t); self._v = virtual
+   |                           ^
+23 |     def now(self): return self._t
+24 |     def advance(self, d): self._t += d
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase6d_zillow_drift.py:28:27
+   |
+26 | class _Clock:
+27 |     def __init__(self, t=1000.0, virtual=False):
+28 |         self._t = float(t); self._v = virtual
+   |                           ^
+29 |     def now(self): return self._t
+30 |     def advance(self, d): self._t += d
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase7_all_tracks.py:10:27
+   |
+ 8 | class _Clock:
+ 9 |     def __init__(self, t=1000.0, virtual=False):
+10 |         self._t = float(t); self._v = virtual
+   |                           ^
+11 |     def now(self): return self._t
+12 |     def advance(self, d): self._t += d
+   |
+
+E702 Multiple statements on one line (semicolon)
+  --> tests\test_phase9_ff_gdelt.py:10:27
+   |
+ 8 | class _Clock:
+ 9 |     def __init__(self, t=1000.0, virtual=False):
+10 |         self._t = float(t); self._v = virtual
+   |                           ^
+11 |     def now(self): return self._t
+12 |     def advance(self, d): self._t += d
+   |
+
+F841 Local variable `requests_get` is assigned to but never used
+  --> tests\test_providers.py:46:5
+   |
+44 |     metrics = Metrics()
+45 |     feed = feed_cls(MessageBus(), cfg, clock, metrics)
+46 |     requests_get = feed._session.get
+   |     ^^^^^^^^^^^^
+47 |     monkeypatch.setattr(type(feed._session), "get",
+48 |                         lambda self, *a, **kw: FakeResponse(data), raising=True)
+   |
+help: Remove assignment to unused variable `requests_get`
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:319:25
+    |
+317 |     tp_mult*band, or the time stop; then a cooldown pause before re-entry."""
+318 |
+319 |     rets = np.zeros(len(close))
+    |                         ^^^^^
+320 |     rets[1:] = close[1:] / close[:-1] - 1.0
+321 |     sigma = pd.Series(rets).rolling(lookback).std().to_numpy()
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:320:16
+    |
+319 |     rets = np.zeros(len(close))
+320 |     rets[1:] = close[1:] / close[:-1] - 1.0
+    |                ^^^^^
+321 |     sigma = pd.Series(rets).rolling(lookback).std().to_numpy()
+322 |     pos = np.zeros(len(close))
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:320:28
+    |
+319 |     rets = np.zeros(len(close))
+320 |     rets[1:] = close[1:] / close[:-1] - 1.0
+    |                            ^^^^^
+321 |     sigma = pd.Series(rets).rolling(lookback).std().to_numpy()
+322 |     pos = np.zeros(len(close))
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:322:24
+    |
+320 |     rets[1:] = close[1:] / close[:-1] - 1.0
+321 |     sigma = pd.Series(rets).rolling(lookback).std().to_numpy()
+322 |     pos = np.zeros(len(close))
+    |                        ^^^^^
+323 |     cur = 0.0
+324 |     held = 0
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:330:24
+    |
+328 |     entry_px = 0.0
+329 |     entry_band = 0.0
+330 |     for i in range(len(close)):
+    |                        ^^^^^
+331 |         s = sigma[i]
+332 |         if cur != 0.0:
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:335:21
+    |
+333 |             held += 1
+334 |             half = 0.5 * (s / k) if (s == s and k > 0) else 0.0
+335 |             gain = (close[i] - entry_px) if cur > 0 else (entry_px - close[i])
+    |                     ^^^^^
+336 |             reentered = (cur > 0 and rets[i] < half) or (cur < 0 and rets[i] > -half)
+337 |             if (gain <= -sl_mult * entry_band or gain >= tp_mult * entry_band
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:335:70
+    |
+333 |             held += 1
+334 |             half = 0.5 * (s / k) if (s == s and k > 0) else 0.0
+335 |             gain = (close[i] - entry_px) if cur > 0 else (entry_px - close[i])
+    |                                                                      ^^^^^
+336 |             reentered = (cur > 0 and rets[i] < half) or (cur < 0 and rets[i] > -half)
+337 |             if (gain <= -sl_mult * entry_band or gain >= tp_mult * entry_band
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:358:28
+    |
+356 |             if streak >= confirm_n:
+357 |                 cur = float(side)
+358 |                 entry_px = close[i]
+    |                            ^^^^^
+359 |                 entry_band = band
+360 |                 held = 0
+    |
+
+W293 [*] Blank line contains whitespace
+   --> validation\strategy_lab.py:563:1
+    |
+561 |             pos_target = build_position(strat, params, df)
+562 |             bpy = infer_bars_per_year(df.index)
+563 |         
+    | ^^^^^^^^
+564 |             key = (strat, sym)
+    |
+help: Remove whitespace from blank line
+    |
+562 |             bpy = infer_bars_per_year(df.index)
+    -         
+563 +
+564 |             key = (strat, sym)
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:568:39
+    |
+566 |             # Positions do not depend on costs, so compute them once and reuse for
+567 |             # gross P&L, financing and every cost level.
+568 |             r_gross, held0 = simulate(close, pos_target, 0.0)
+    |                                       ^^^^^
+569 |             gross_pct = 100.0 * (float(np.prod(1.0 + r_gross)) - 1.0)
+570 |             fin = (financing_series(df.index, held0, swap_schedule, sym)
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:575:36
+    |
+574 |             for cost in COST_LEVELS:
+575 |                 r, held = simulate(close, pos_target, cost, financing=fin)
+    |                                    ^^^^^
+576 |                 st = stats_from_returns(r, df.index, bars_per_year=bpy)
+577 |                 row: dict = {
+    |
+
+F821 Undefined name `close`
+   --> validation\strategy_lab.py:586:47
+    |
+584 |                 }
+585 |                 if cost == COST_LEVELS[2]:  # trade log at the realistic 5 bps level
+586 |                     ts = extract_trades(held, close, df.index, cost, financing=fin)
+    |                                               ^^^^^
+587 |                     for t in ts:
+588 |                         t["params"] = pid
+    |
+
+Found 94 errors.
+[*] 1 fixable with the `--fix` option (8 hidden fixes can be enabled with the `--unsafe-fixes` option).

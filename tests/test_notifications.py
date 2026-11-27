@@ -1,15 +1,23 @@
 import os
-from unittest.mock import patch, MagicMock
+import time
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from notifications.telegram import (
-    escape_mdv2, format_event, _TelegramBucket, _Sender, TelegramNotifier,
+    TelegramNotifier,
     _normalize_chat_id,
+    _Sender,
+    _TelegramBucket,
+    escape_mdv2,
+    format_event,
 )
 
 
 class _Clock:
-    def __init__(self, virtual=False): self._v = virtual; self._t = 1000.0
+    def __init__(self, virtual=False):
+        self._v = virtual
+        self._t = 1000.0
     def now(self): return self._t
     @property
     def mode(self): return "virtual" if self._v else "real"
@@ -62,7 +70,7 @@ def test_format_order_fill_close_shows_pnl():
         "price": 1.2345, "closed": True, "pnl": 12.34,
     }, ts=1_700_000_000.0)
     assert "CLOSE" in msg
-    assert "+12.34" in msg
+    assert r"\+12\.34" in msg
 
 
 def test_format_generic_fallback():
@@ -76,8 +84,8 @@ def test_format_order_proposal_escapes_reserved_equals():
         "symbol": "EURUSD", "side": "buy", "direction": 1.0,
         "qty": 1.0, "source": "x",
     }, ts=1_700_000_000.0)
-    # '=' and '+' are MarkdownV2-reserved and must be escaped.
-    assert r"dir\=\+1" in msg
+    # '+' is MarkdownV2-reserved and must be escaped inside the code span.
+    assert r"\+1" in msg
 
 
 def test_format_order_fill_close_escapes_parens():
@@ -93,7 +101,7 @@ def test_format_nowcast_escapes_sigma_and_equals():
         "release_id": "CPI_YOY", "mean": 0.3, "stddev": 0.108,
         "edge_vs_consensus": 0.01,
     }, ts=1_700_000_000.0)
-    assert r"\=" in msg and r"0\.1080" in msg
+    assert r"0\.1080" in msg
 
 
 # ---------- Rate limiter -------------------------------------------------- #
@@ -123,7 +131,7 @@ def test_sender_enqueue_and_send(monkeypatch):
 
     monkeypatch.setattr("notifications.telegram.requests.post", fake_post)
     sender.enqueue("hello", "info")
-    import time; time.sleep(0.5)
+    time.sleep(0.5)
     sender.close()
     assert calls, "expected at least one POST"
     assert calls[0][1]["chat_id"] == "-100test"

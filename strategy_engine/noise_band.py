@@ -17,14 +17,13 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import Dict, List, Optional
 
 import numpy as np
 
 from core.bus import MessageBus
 from core.component import Component
 from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
+from core.events import EventType, NormalizedEvent, make_event
 from core.metrics import Metrics
 
 log = logging.getLogger("strategy.noise_band")
@@ -47,10 +46,10 @@ class NoiseBandStrategy(Component):
         self.max_concurrent = int(cfg.get(f"{sec}.max_concurrent", 1))
         self.enabled = bool(cfg.get(f"{sec}.enabled", True))
         self.symbols_allowed = set(cfg.get(f"{sec}.symbols", cfg.get("symbols", ["EURUSD"])))
-        self._closes: Dict[str, deque] = {}
-        self._open: Dict[str, dict] = {}
-        self._cooldown: Dict[str, float] = {}
-        self._armed: Dict[str, float] = {}  # symbol -> direction of last proposal
+        self._closes: dict[str, deque] = {}
+        self._open: dict[str, dict] = {}
+        self._cooldown: dict[str, float] = {}
+        self._armed: dict[str, float] = {}  # symbol -> direction of last proposal
 
     # ---- helpers --------------------------------------------------------
     def _returns(self, sym: str) -> np.ndarray:

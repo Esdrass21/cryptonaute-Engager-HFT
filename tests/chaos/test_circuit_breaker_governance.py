@@ -2,6 +2,7 @@
 Must be denied and audited."""
 import json
 from pathlib import Path
+
 import pytest
 
 from core.audit import AuditLog
@@ -10,7 +11,8 @@ from core.config import Config
 from core.event_log import InMemoryEventLog
 from risk_management.circuit_breaker import CircuitBreaker
 from risk_management.two_person import (
-    TwoPersonError, TwoPersonRule,
+    TwoPersonError,
+    TwoPersonRule,
 )
 
 pytestmark = pytest.mark.chaos

@@ -4,6 +4,7 @@ Book-aware fills, partial fills, commission, SL/TP ownership, determinism.
 """
 import math
 from pathlib import Path
+
 import pytest
 
 from core.config import Config
@@ -64,8 +65,8 @@ def test_walk_book_partial_when_book_exhausted():
 def test_synthesized_book_is_deterministic():
     a = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
     b = synthesize_book("BTC", 60_000.0, ts=1.0, n_levels=5)
-    assert [l.price for l in a.bids] == [l.price for l in b.bids]
-    assert [l.size for l in a.asks] == [l.size for l in b.asks]
+    assert [lvl.price for lvl in a.bids] == [lvl.price for lvl in b.bids]
+    assert [lvl.size for lvl in a.asks] == [lvl.size for lvl in b.asks]
 
 
 def test_synthesized_book_is_symmetric_around_mid():

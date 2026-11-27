@@ -27,11 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from pathlib import Path
-from typing import Dict, Optional
-
-import numpy as np
 
 from analytics.nowcast.base import NowcastBase
 
@@ -72,13 +68,13 @@ class NFPFeatures:
     """Holds the last observed value of each input. Updated via the bus."""
 
     def __init__(self) -> None:
-        self._values: Dict[str, Optional[float]] = {k: None for k in FEATURES}
+        self._values: dict[str, float | None] = dict.fromkeys(FEATURES)
 
     def update(self, key: str, value: float) -> None:
         if key in self._values:
             self._values[key] = float(value)
 
-    def as_dict(self) -> Dict[str, float]:
+    def as_dict(self) -> dict[str, float]:
         # Missing features get imputed to 0 for the linear combination — but we
         # report the fraction present so the caller knows reliability.
         return {k: (v if v is not None else 0.0) for k, v in self._values.items()}
@@ -98,10 +94,10 @@ class NFPNowcast(NowcastBase):
     def release_ids(self) -> list[str]:
         return ["NFP"]
 
-    def features(self) -> Dict[str, float]:
+    def features(self) -> dict[str, float]:
         return self.feature_state.as_dict()
 
-    def predict(self, features: Dict[str, float]) -> tuple[float, float]:
+    def predict(self, features: dict[str, float]) -> tuple[float, float]:
         mean = self.coef["intercept"]
         for k in FEATURES:
             mean += self.coef.get(k, 0.0) * features.get(k, 0.0)
@@ -109,7 +105,7 @@ class NFPNowcast(NowcastBase):
         return mean, stddev
 
     # ------------------------------------------------------------------ #
-    def _load_coefficients(self, cfg) -> tuple[Dict[str, float], float, float]:
+    def _load_coefficients(self, cfg) -> tuple[dict[str, float], float, float]:
         path = cfg.get("nowcast.nfp.coefficients_path", "config/nowcast/nfp_coefficients.json")
         p = Path(path)
         if p.exists():

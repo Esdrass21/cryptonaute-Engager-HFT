@@ -356,8 +356,19 @@ strategy:
       - BTCUSD
   ev:
     min_expected_value: 0.2
+  shadow:
+    enabled: true
+    shadow_log: "data/shadow_proposals.jsonl"
+    combine_mode: "priority"
+    priority_strategy_order: ["tsmom", "noise_band"]
+    max_concurrent_proposals: 1
     min_confidence: 0.6
     calibrated: false          # MUST be true before live (§7.3 gate)
+  release_drift:
+    enabled: true
+    min_surprise_z: 1.5
+    max_concurrent: 1
+    rules: {}
 
 execution:
   broker: paper                 # paper | mt5 | crypto
@@ -370,6 +381,24 @@ execution:
   # --- Phase 4 ---
   commission_bps: 1.0        # set to 0.0 to match pre-Phase-4 P&L exactly
   retry_partial: true        # retry the residual on partial fills
+
+  # Overnight swap / rollover financing (PaperBroker + strategy lab).
+  # bps of position notional per night; positive = debit, negative = credit.
+  # Wednesday is charged triple (T+2 convention). Override real broker rates
+  # per symbol here or point the lab at a dedicated file with --swap-config.
+  swap:
+    enabled: true
+    rollover_hour_utc: 21
+    triple_swap_weekday: 2      # Wednesday (0=Mon)
+    families:
+      fx:     { long_bps: 0.35, short_bps: 0.35 }
+      metal:  { long_bps: 0.80, short_bps: 0.80 }
+      energy: { long_bps: 1.50, short_bps: 1.50 }
+      crypto: { long_bps: 3.00, short_bps: 3.00 }
+      other:  { long_bps: 0.00, short_bps: 0.00 }
+    symbols: {}                 # per-symbol overrides, e.g. { EURUSD: {long_bps: 0.2, short_bps: 0.1} }
+    # default: { long_bps: 0.0, short_bps: 0.0 }
+
   book:
     n_levels: 5
     tick_size_bps: 1.0       # half-spread in bps
@@ -421,8 +450,16 @@ validation:
     reference_notional: 100000.0
     seed: 0
   gate:
-    min_dsr: 0.0        # raise to e.g. 0.95 in live mode
+    min_dsr: 0.0        # paper
     max_pbo: 0.5
+    max_daily_drawdown_pct: 2.0   # paper
+    live:
+      min_dsr: 0.95     # live
+      max_pbo: 0.3
+      max_daily_drawdown_pct: 0.5
+  signal_log:
+    enabled: false                     # opt-in — turn on for drift analysis
+    path: data/signal_log.jsonl
 
 observability:
   prometheus:
@@ -438,11 +475,6 @@ event_log:
   path: data/events.jsonl
   fsync: true
   checkpoint_path: data/events.jsonl.checkpoint
-
-validation:
-  signal_log:
-    enabled: false                     # opt-in — turn on for drift analysis
-    path: data/signal_log.jsonl
 
 # Signing key provider: env (dev) | file (production keyring).
 keys:
@@ -468,13 +500,6 @@ nowcast:
     coefficients_path: config/nowcast/nfp_coefficients.json
   cpi:
     coefficients_path: config/nowcast/cpi_coefficients.json
-
-strategy:
-  release_drift:
-    enabled: true
-    min_surprise_z: 1.5
-    max_concurrent: 1
-    rules: {}
 
 notifications:
   telegram:

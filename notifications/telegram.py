@@ -7,21 +7,17 @@ channel. Runs off the critical path (async, best-effort, never raises).
 """
 from __future__ import annotations
 
-import json
 import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import requests
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, NormalizedEvent
-from core.metrics import Metrics
+from core.events import NormalizedEvent
 
 log = logging.getLogger("notifications.telegram")
 
@@ -29,7 +25,7 @@ TG_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 _SEVERITY_ORDER = {"info": 0, "warning": 1, "critical": 2}
 
-_EVENT_SEVERITY: Dict[str, str] = {
+_EVENT_SEVERITY: dict[str, str] = {
     "circuit_breaker":   "critical",
     "risk_breach":       "critical",
     "veto_signature_rejected": "critical",
@@ -103,111 +99,163 @@ def _normalize_chat_id(raw: Any) -> str:
     return "@" + s
 
 
-def format_event(event_type: str, payload: Dict[str, Any], ts: float) -> str:
+def _code(content: str) -> str:
+    """Wrap content in inline code, escaping MarkdownV2 reserved chars inside."""
+    return "`" + escape_mdv2(content) + "`"
+
+
+def _pnl_badge(pnl) -> str:
+    if pnl is None:
+        return _code("PnL: —")
+    try:
+        p = float(pnl)
+    except (TypeError, ValueError):
+        return _code(f"PnL: {str(pnl)}")
+    badge = "🟢" if p >= 0 else "🔴"
+    return f"{badge} {_code(f'PnL: {p:+.2f}')}"
+
+
+def format_event(event_type: str, payload: dict[str, Any], ts: float) -> str:
     import datetime as _dt
-    stamp = _dt.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC")
+    stamp = _code(_dt.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S UTC"))
+
+    def _num(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
 
     if event_type == "order_proposal":
-        sym = escape_mdv2(payload.get("symbol", "?"))
-        side = escape_mdv2(payload.get("side", "?"))
-        direction = payload.get("direction", 0.0)
-        qty = payload.get("qty", 0.0)
-        src = escape_mdv2(payload.get("source", "strategy"))
+        sym = str(payload.get("symbol", "?"))
+        side = str(payload.get("side", "?"))
+        direction = _num(payload.get("direction", 0.0))
+        qty = _num(payload.get("qty", 0.0))
+        src = str(payload.get("source", "strategy"))
+        conf = payload.get("confidence")
+        conf_txt = f"\n_conf:_ {_code(f'{float(conf):.2f}')}" if conf is not None else ""
         return (
             f"*📊 ORDER PROPOSAL*\n"
-            f"`{stamp}`\n"
-            f"Symbol: `{sym}`\n"
-            f"Side: `{side}` \\({escape_mdv2(f'dir={direction:+.0f}')}\\)\n"
-            f"Qty: `{qty}`\n"
-            f"Source: `{src}`"
+            f"🕒 {stamp}\n"
+            f"🪙 {_code(sym)}\n"
+            f"📈 {_code(side)} ({_code(f'{direction:+.0f}')})\n"
+            f"📦 {_code(f'{qty}')}\n"
+            f"🔧 {_code(src)}{conf_txt}"
         )
 
     if event_type == "risk_veto":
-        sym = escape_mdv2(payload.get("symbol", "?"))
-        decision = escape_mdv2(payload.get("decision", "?"))
+        sym = str(payload.get("symbol", "?"))
+        decision = str(payload.get("decision", "?"))
         reasons = payload.get("reasons") or []
-        reasons_txt = escape_mdv2("; ".join(str(r) for r in reasons)) or "none"
+        reasons_txt = "; ".join(str(r) for r in reasons) or "none"
+        rule = str(payload.get("rule", "—"))
         return (
-            f"*🛡️ RISK VETO* — `{decision.upper()}`\n"
-            f"`{stamp}`\n"
-            f"Symbol: `{sym}`\n"
-            f"Reasons: {reasons_txt}"
+            f"*🛡️ RISK VETO* — {_code(decision.upper())}\n"
+            f"🕒 {stamp}\n"
+            f"🪙 {_code(sym)}\n"
+            f"📋 {_code(rule)}\n"
+            f"🚫 {_code(reasons_txt)}"
         )
 
     if event_type == "order_fill":
-        sym = escape_mdv2(payload.get("symbol", "?"))
-        side = escape_mdv2(payload.get("side", "?"))
-        vol = payload.get("filled_notional", payload.get("volume", 0.0))
-        px = payload.get("price", 0.0)
+        sym = str(payload.get("symbol", "?"))
+        side = str(payload.get("side", "?"))
+        vol = _num(payload.get("filled_notional", payload.get("volume", 0.0)))
+        px = _num(payload.get("price", 0.0))
         closed = payload.get("closed", False)
         pnl = payload.get("pnl")
-        ot = escape_mdv2(payload.get("order_type", "market"))
+        ot = str(payload.get("order_type", "market"))
+        ticket = str(payload.get("ticket", "—"))
         head = "🟢 ORDER FILL (CLOSE)" if closed else "🟢 ORDER FILL (OPEN)"
-        extra = ""
-        if pnl is not None:
-            extra = f"\nPnL: `{pnl:+.2f}`"
         return (
             f"*{escape_mdv2(head)}*\n"
-            f"`{stamp}`\n"
-            f"Symbol: `{sym}`\n"
-            f"Side: `{side}`\n"
-            f"Notional: `{vol:.2f}`\n"
-            f"Price: `{px:.6f}`\n"
-            f"Type: `{ot}`{extra}"
+            f"🕒 {stamp}\n"
+            f"🪙 {_code(sym)}\n"
+            f"📈 {_code(side)}\n"
+            f"💵 {_code(f'{vol:.2f}')}\n"
+            f"💰 {_code(f'{px:.6f}')}\n"
+            f"🏷️ {_code(ot)}\n"
+            f"🎫 {_code(ticket)}\n"
+            f"{_pnl_badge(pnl)}"
+        )
+
+    if event_type == "order_exit":
+        sym = str(payload.get("symbol", "?"))
+        side = str(payload.get("side", "?"))
+        vol = _num(payload.get("filled_notional", payload.get("volume", 0.0)))
+        px = _num(payload.get("price", 0.0))
+        pnl = payload.get("pnl")
+        reason = str(payload.get("reason", "—"))
+        ticket = str(payload.get("ticket", "—"))
+        return (
+            f"*🏁 ORDER EXIT*\n"
+            f"🕒 {stamp}\n"
+            f"🪙 {_code(sym)}\n"
+            f"📈 {_code(side)}\n"
+            f"💵 {_code(f'{vol:.2f}')}\n"
+            f"💰 {_code(f'{px:.6f}')}\n"
+            f"{_pnl_badge(pnl)}\n"
+            f"🎫 {_code(ticket)}\n"
+            f"📋 {_code(reason)}"
         )
 
     if event_type == "order_reject":
-        sym = escape_mdv2(payload.get("symbol", "?"))
-        reason = escape_mdv2(payload.get("reason", "?"))
+        sym = str(payload.get("symbol", "?"))
+        reason = str(payload.get("reason", "?"))
+        code = str(payload.get("code", "—"))
         return (
             f"*🔴 ORDER REJECT*\n"
-            f"`{stamp}`\n"
-            f"Symbol: `{sym}`\n"
-            f"Reason: `{reason}`"
+            f"🕒 {stamp}\n"
+            f"🪙 {_code(sym)}\n"
+            f"📋 {_code(code)}\n"
+            f"🚫 {_code(reason)}"
         )
 
     if event_type == "release_actual":
-        rid = escape_mdv2(payload.get("release_id", "?"))
-        act = payload.get("actual", 0.0)
-        cons = payload.get("consensus", 0.0)
-        surp = payload.get("surprise", 0.0)
+        rid = str(payload.get("release_id", "?"))
+        act = _num(payload.get("actual", 0.0))
+        cons = _num(payload.get("consensus", 0.0))
+        surp = _num(payload.get("surprise", 0.0))
+        unit = str(payload.get("unit", ""))
+        unit_txt = f" {_code(unit)}" if unit else ""
         return (
             f"*📰 RELEASE ACTUAL*\n"
-            f"`{stamp}`\n"
-            f"Release: `{rid}`\n"
-            f"Actual: `{act}`\n"
-            f"Consensus: `{cons}`\n"
-            f"Surprise: `{surp:+.2f}σ`"
+            f"🕒 {stamp}\n"
+            f"📅 {_code(rid)}\n"
+            f"📊 {_code(f'{act}')}{unit_txt}\n"
+            f"🎯 {_code(f'{cons}')}{unit_txt}\n"
+            f"⚡ {_code(f'{surp:+.2f}σ')}"
         )
 
     if event_type == "nowcast":
-        rid = escape_mdv2(payload.get("release_id", "?"))
-        mean = payload.get("mean", 0.0)
-        sd = payload.get("stddev", 0.0)
-        edge = payload.get("edge_vs_consensus", 0.0)
+        rid = str(payload.get("release_id", "?"))
+        mean = _num(payload.get("mean", 0.0))
+        sd = _num(payload.get("stddev", 0.0))
+        edge = _num(payload.get("edge_vs_consensus", 0.0))
         return (
             f"*📈 NOWCAST*\n"
-            f"`{stamp}`\n"
-            f"Release: `{rid}`\n"
-            f"Forecast: `{mean:.4f}` \\({escape_mdv2(f'σ={sd:.4f}')}\\)\n"
-            f"Edge vs consensus: `{edge:+.4f}`"
+            f"🕒 {stamp}\n"
+            f"📅 {_code(rid)}\n"
+            f"🔮 {_code(f'{mean:.4f} σ={sd:.4f}')}\n"
+            f"⚡ {_code(f'{edge:+.4f}')} vs consensus"
         )
 
     if event_type in ("circuit_breaker", "risk_breach"):
-        state = escape_mdv2(payload.get("state") or payload.get("reason", "?"))
-        val = payload.get("value", 0.0)
+        state = str(payload.get("state") or payload.get("reason", "?"))
+        val = _num(payload.get("value", 0.0))
+        limit = payload.get("limit", "—")
+        limit_txt = f"\n📏 {_code(str(limit))}" if limit is not None else ""
         return (
             f"*🚨 CIRCUIT BREAKER*\n"
-            f"`{stamp}`\n"
-            f"State: `{state}`\n"
-            f"Value: `{val:.2f}`"
+            f"🕒 {stamp}\n"
+            f"📛 {_code(state)}\n"
+            f"📉 {_code(f'{val:.2f}')}{limit_txt}"
         )
 
     pairs = []
-    for k, v in list(payload.items())[:8]:
-        pairs.append(f"{escape_mdv2(k)}: `{escape_mdv2(str(v)[:80])}`")
+    for k, v in list(payload.items())[:10]:
+        pairs.append(f"{escape_mdv2(str(k))}: {_code(str(v)[:100])}")
     body = "\n".join(pairs)
-    return f"*ℹ️ {escape_mdv2(event_type.upper())}*\n`{stamp}`\n{body}"
+    return f"*ℹ️ {escape_mdv2(event_type.upper())}*\n🕒 {stamp}\n{body}"
 
 
 @dataclass
@@ -223,7 +271,7 @@ class _Sender:
         self.chat_id = chat_id
         self.url = TG_API.format(token=token)
         self.bucket = _TelegramBucket(rate_per_min=rate_per_min)
-        self.q: queue.Queue[Optional[_Msg]] = queue.Queue(maxsize=queue_size)
+        self.q: queue.Queue[_Msg | None] = queue.Queue(maxsize=queue_size)
         self._stop = threading.Event()
         self.sent = 0
         self.dropped = 0
@@ -317,8 +365,8 @@ class TelegramNotifier(Component):
 
         rate = float(n.get("rate_per_min", 20.0))
         qsize = int(n.get("queue_size", 500))
-        self._sender: Optional[_Sender] = None
-        self._relay_sender: Optional[_Sender] = None
+        self._sender: _Sender | None = None
+        self._relay_sender: _Sender | None = None
         if self.enabled and self.token:
             if self.chat_id:
                 self._sender = _Sender(
@@ -416,7 +464,7 @@ class TelegramNotifier(Component):
             if sender is not None:
                 sender.close()
 
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> dict[str, int]:
         s = self._sender
         r = self._relay_sender
         return {

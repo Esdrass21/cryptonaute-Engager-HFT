@@ -22,9 +22,8 @@ import copy
 import itertools
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -48,7 +47,7 @@ STARTING_CAPITAL = 10_000.0
 
 @dataclass
 class TrialResult:
-    params: Dict[str, float]
+    params: dict[str, float]
     net_pnl: float
     trades: int
     max_dd_pct: float
@@ -56,7 +55,7 @@ class TrialResult:
     passed: bool
     score: float
     # Phase 3: real return streams
-    trade_records: List[tuple] = field(default_factory=list)   # [(exit_ts, pnl), ...]
+    trade_records: list[tuple] = field(default_factory=list)   # [(exit_ts, pnl), ...]
     equity_returns: np.ndarray = field(default_factory=lambda: np.array([]))
     is_sharpe: float = 0.0
 
@@ -68,8 +67,8 @@ class TrialResult:
 
 @dataclass
 class TuneReport:
-    results: List[TrialResult]
-    best: Optional[TrialResult]
+    results: list[TrialResult]
+    best: TrialResult | None
     n_trials: int
     is_frac: float
     # IS-side statistics
@@ -79,10 +78,10 @@ class TuneReport:
     psr_vs_zero: float
     pbo: float
     # OOS-side statistics for the winner
-    oos_net: Optional[float]
-    oos_dd: Optional[float]
-    oos_sharpe: Optional[float]
-    oos_trades: Optional[int]
+    oos_net: float | None
+    oos_dd: float | None
+    oos_sharpe: float | None
+    oos_trades: int | None
     # Config used for the OOS run
     oos_events: int
 
@@ -102,12 +101,12 @@ _GRID = {
 }
 
 
-def _normalize_weights(weights: Dict[str, float]) -> Dict[str, float]:
+def _normalize_weights(weights: dict[str, float]) -> dict[str, float]:
     total = sum(weights.values()) or 1.0
     return {k: round(v / total, 4) for k, v in weights.items()}
 
 
-def _apply_params(cfg: Config, params: Dict[str, float]) -> Config:
+def _apply_params(cfg: Config, params: dict[str, float]) -> Config:
     """Return a fresh Config with `params` applied. Never mutate `cfg` in place."""
     new = Config(copy.deepcopy(cfg.data))
     norm = _normalize_weights({
@@ -131,7 +130,7 @@ def _apply_params(cfg: Config, params: Dict[str, float]) -> Config:
 def _run_trial(
     base_cfg: Config,
     events,
-    params: Dict[str, float],
+    params: dict[str, float],
     min_trades: int,
     max_dd_pct: float,
 ) -> TrialResult:
@@ -175,12 +174,12 @@ def _run_trial(
 # Aggregation                                                                  #
 # --------------------------------------------------------------------------- #
 
-def trial_sharpes(results: List[TrialResult]) -> List[float]:
+def trial_sharpes(results: list[TrialResult]) -> list[float]:
     return [r.is_sharpe for r in results]
 
 
 def pbo_from_results(
-    results: List[TrialResult],
+    results: list[TrialResult],
     n_chunks: int = 8,
     embargo_pct: float = 0.01,
 ) -> float:
@@ -211,9 +210,9 @@ def pbo_from_results(
 
 def tune(
     events,
-    base_cfg: Optional[Config] = None,
+    base_cfg: Config | None = None,
     *,
-    trials: Optional[int] = None,
+    trials: int | None = None,
     seed: int = 7,
     min_trades: int = 5,
     max_dd_pct: float = 2.0,
@@ -242,7 +241,7 @@ def tune(
 
     # --- enumerate grid ---------------------------------------------- #
     keys = list(_GRID)
-    full = [dict(zip(keys, combo))
+    full = [dict(zip(keys, combo, strict=True))
             for combo in itertools.product(*(_GRID[k] for k in keys))]
     if trials is not None and trials < len(full):
         import random
@@ -251,7 +250,7 @@ def tune(
         full = full[:trials]
 
     # --- run trials on IS -------------------------------------------- #
-    results: List[TrialResult] = []
+    results: list[TrialResult] = []
     for params in full:
         results.append(_run_trial(base_cfg, is_events, params, min_trades, max_dd_pct))
     results.sort(key=lambda r: r.score, reverse=True)
@@ -296,7 +295,7 @@ def tune(
     )
 
 
-def _best_passing(results: List[TrialResult]) -> Optional[TrialResult]:
+def _best_passing(results: list[TrialResult]) -> TrialResult | None:
     for r in results:
         if r.passed:
             return r
@@ -409,12 +408,12 @@ class TuneMeta:
     dsr: float
     psr_vs_zero: float
     pbo: float
-    oos_net: Optional[float]
-    oos_dd: Optional[float]
-    oos_sharpe: Optional[float]
-    oos_trades: Optional[int]
+    oos_net: float | None
+    oos_dd: float | None
+    oos_sharpe: float | None
+    oos_trades: int | None
     oos_events: int
-    best_params: Optional[dict]
+    best_params: dict | None
 
 
 def load_meta(path: str | Path) -> TuneMeta:

@@ -15,7 +15,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -29,7 +29,7 @@ except Exception:  # noqa: BLE001
 log = logging.getLogger("core.config")
 
 
-def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge ``override`` into a copy of ``base`` (architecture: config deep-merge)."""
     out = dict(base)
     for k, v in override.items():
@@ -38,6 +38,35 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
         else:
             out[k] = v
     return out
+
+
+class _MergingSafeLoader(yaml.SafeLoader):
+    """SafeLoader that deep-merges duplicate mapping keys instead of dropping them.
+
+    Hand-written YAML often ends up with two top-level ``strategy:`` (or
+    ``validation:``) blocks. PyYAML's default safe loader silently keeps only the
+    last one, which silently discards tuned strategy parameters. Merging keeps
+    both sections and matches the config deep-merge contract used for files.
+    """
+
+
+def _construct_merging_mapping(loader: yaml.SafeLoader, node, deep: bool = False) -> dict[Any, Any]:
+    loader.flatten_mapping(node)
+    mapping: dict[Any, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        value = loader.construct_object(value_node, deep=deep)
+        if key in mapping and isinstance(mapping[key], dict) and isinstance(value, dict):
+            mapping[key] = _deep_merge(mapping[key], value)
+        else:
+            mapping[key] = value
+    return mapping
+
+
+_MergingSafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    lambda loader, node: _construct_merging_mapping(loader, node, deep=True),
+)
 
 
 class Config:
@@ -49,7 +78,7 @@ class Config:
     >>> cfg.get("risk.max_daily_drawdown_pct", 2.0)
     """
 
-    DEFAULTS: Dict[str, Any] = {
+    DEFAULTS: dict[str, Any] = {
         "platform": {"name": "cryptonaute-hft", "version": "3.0.0"},
         "mode": "paper",                       # paper | live
         "bus": {"backend": "memory", "redis_url": None},
@@ -121,17 +150,17 @@ class Config:
         },
     }
 
-    def __init__(self, data: Dict[str, Any]) -> None:
+    def __init__(self, data: dict[str, Any]) -> None:
         self._data = data
 
     @classmethod
-    def load(cls, *paths: str | Path) -> "Config":
+    def load(cls, *paths: str | Path) -> Config:
         data = copy.deepcopy(cls.DEFAULTS)
         for p in paths:
             p = Path(p)
             if p.exists():
                 with p.open("r", encoding="utf-8") as fh:
-                    loaded = yaml.safe_load(fh) or {}
+                    loaded = yaml.load(fh, Loader=_MergingSafeLoader) or {}
                 data = _deep_merge(data, loaded)
                 log.info("Config: loaded %s", p)
         return cls(data)
@@ -146,6 +175,21 @@ class Config:
                 return default
         return cur
 
+    def get_any(self, *paths: str, default: Any = None) -> Any:
+        """Return the first present dotted path (legacy ``core.*`` vs flat layouts)."""
+        for dotted in paths:
+            cur: Any = self._data
+            found = True
+            for part in dotted.split("."):
+                if isinstance(cur, dict) and part in cur:
+                    cur = cur[part]
+                else:
+                    found = False
+                    break
+            if found:
+                return cur
+        return default
+
     def set(self, dotted: str, value: Any) -> None:
         parts = dotted.split(".")
         cur = self._data
@@ -154,11 +198,11 @@ class Config:
         cur[parts[-1]] = value
 
     @property
-    def data(self) -> Dict[str, Any]:
+    def data(self) -> dict[str, Any]:
         return self._data
 
     # ---- secrets (never logged) --------------------------------------
-    def secret(self, key: str, default: Optional[str] = None) -> Optional[str]:
+    def secret(self, key: str, default: str | None = None) -> str | None:
         return os.environ.get(key, default)
 
 

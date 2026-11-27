@@ -25,15 +25,11 @@ Replay mode:
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -44,7 +40,7 @@ FRED_BASE = "https://api.stlouisfed.org/fred"
 # --------------------------------------------------------------------------- #
 # Series map: FRED series ID -> (release_id, human label, units)              #
 # --------------------------------------------------------------------------- #
-SERIES_MAP: Dict[str, tuple[str, str, str]] = {
+SERIES_MAP: dict[str, tuple[str, str, str]] = {
     "ICSA":        ("JOBLESS_CLAIMS",       "Initial jobless claims",     "thousands"),
     "CCSA":        ("CONTINUED_CLAIMS",     "Continued claims",            "thousands"),
     "ADPMNUSNERSA":("ADP_PRIVATE",          "ADP private payrolls",        "thousands"),
@@ -74,9 +70,9 @@ SERIES_MAP: Dict[str, tuple[str, str, str]] = {
 @dataclass(frozen=True)
 class Observation:
     date: str            # YYYY-MM-DD
-    value: Optional[float]
-    realtime_start: Optional[str] = None
-    realtime_end: Optional[str] = None
+    value: float | None
+    realtime_start: str | None = None
+    realtime_end: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -90,14 +86,14 @@ class Observation:
 # --------------------------------------------------------------------------- #
 
 class FredClient:
-    def __init__(self, api_key: str, *, http: Optional[HttpClient] = None) -> None:
+    def __init__(self, api_key: str, *, http: HttpClient | None = None) -> None:
         if not api_key or len(api_key) < 20:
             raise ValueError("FRED API key looks invalid (need 32-char key)")
         self.api_key = api_key
         self.http = http or HttpClient(rate_per_sec=2.0, burst=5.0)
 
     # ------------------------------------------------------------------ #
-    def _get(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         p = dict(params)
         p["api_key"] = self.api_key
         p.setdefault("file_type", "json")
@@ -112,7 +108,7 @@ class FredClient:
         return resp.json()
 
     # ------------------------------------------------------------------ #
-    def series(self, series_id: str) -> Dict[str, Any]:
+    def series(self, series_id: str) -> dict[str, Any]:
         doc = self._get("series", {"series_id": series_id})
         return doc.get("seriess", [{}])[0]
 
@@ -120,12 +116,12 @@ class FredClient:
         self,
         series_id: str,
         *,
-        start: Optional[str] = None,       # YYYY-MM-DD
-        end: Optional[str] = None,
+        start: str | None = None,       # YYYY-MM-DD
+        end: str | None = None,
         limit: int = 10_000,
         sort: str = "asc",
-    ) -> List[Observation]:
-        params: Dict[str, Any] = {"series_id": series_id, "limit": limit, "sort_order": sort}
+    ) -> list[Observation]:
+        params: dict[str, Any] = {"series_id": series_id, "limit": limit, "sort_order": sort}
         if start:
             params["observation_start"] = start
         if end:
@@ -147,18 +143,18 @@ class FredClient:
         series_id: str,
         *,
         realtime_start: str,
-        realtime_end: Optional[str] = None,
-        observation_start: Optional[str] = None,
-        observation_end: Optional[str] = None,
-        vintage_dates: Optional[List[str]] = None,
-    ) -> List[Observation]:
+        realtime_end: str | None = None,
+        observation_start: str | None = None,
+        observation_end: str | None = None,
+        vintage_dates: list[str] | None = None,
+    ) -> list[Observation]:
         """
         ALFRED: return the value of `series_id` as it was known during the
         real-time period [realtime_start, realtime_end].
         """
         if vintage_dates and (realtime_start or realtime_end):
             raise ValueError("vintage_dates is mutually exclusive with realtime bounds")
-        params: Dict[str, Any] = {"series_id": series_id, "limit": 10_000, "sort_order": "asc"}
+        params: dict[str, Any] = {"series_id": series_id, "limit": 10_000, "sort_order": "asc"}
         if vintage_dates:
             params["vintage_dates"] = ",".join(vintage_dates)
         else:
@@ -184,11 +180,11 @@ class FredClient:
         self,
         series_id: str,
         *,
-        realtime_start: Optional[str] = None,
-        realtime_end: Optional[str] = None,
-    ) -> List[str]:
+        realtime_start: str | None = None,
+        realtime_end: str | None = None,
+    ) -> list[str]:
         """Every date on which this series was revised."""
-        params: Dict[str, Any] = {"series_id": series_id}
+        params: dict[str, Any] = {"series_id": series_id}
         if realtime_start:
             params["realtime_start"] = realtime_start
         if realtime_end:
@@ -197,7 +193,7 @@ class FredClient:
         return list(doc.get("vintage_dates", []))
 
     # ------------------------------------------------------------------ #
-    def release_dates(self, release_id: int, *, limit: int = 50) -> List[Dict[str, Any]]:
+    def release_dates(self, release_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
         """
         Past + future scheduled dates for a release (CPI, NFP, etc.).
 
@@ -210,7 +206,7 @@ class FredClient:
                                           "include_release_dates_with_no_data": "true"})
         return doc.get("release_dates", [])
 
-    def releases(self) -> List[Dict[str, Any]]:
+    def releases(self) -> list[dict[str, Any]]:
         doc = self._get("releases", {"limit": 1000})
         return doc.get("releases", [])
 
@@ -222,7 +218,7 @@ class FredClient:
 # Helpers                                                                      #
 # --------------------------------------------------------------------------- #
 
-def _to_float(v: Any) -> Optional[float]:
+def _to_float(v: Any) -> float | None:
     if v is None or v == "." or v == "":
         return None
     try:
@@ -250,8 +246,8 @@ class FredFeed(Component):
         self.series = list(cfg.get("data.fred.series", list(SERIES_MAP.keys())))
         self.poll_interval_s = float(cfg.get("data.fred.poll_interval_s", 3600.0))
         self._last_poll = 0.0
-        self._last_value: Dict[str, Optional[float]] = {}
-        self._client: Optional[FredClient] = None
+        self._last_value: dict[str, float | None] = {}
+        self._client: FredClient | None = None
         if self.api_key:
             try:
                 self._client = FredClient(self.api_key)

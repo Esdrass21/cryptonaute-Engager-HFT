@@ -16,15 +16,16 @@ import math
 import sys
 from pathlib import Path
 
+import ccxt
+from dotenv import load_dotenv
+
+from core.config import Config
+
 # repo-root bootstrap so `import core` works when run as a script
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dotenv import load_dotenv
-
 load_dotenv()  # pull BINANCE_API_KEY / BINANCE_API_SECRET from .env
 
-import ccxt
-from core.config import Config
 
 
 def main() -> int:
@@ -87,7 +88,7 @@ def main() -> int:
     order = ex.create_order(sym, "limit", "buy", qty, limit_price)
     oid = order["id"]
     print(f"[3] ORDER ACCEPTED  id={oid}  status={order.get('status')}")
-    print(f"[4] cancelling immediately (zero fill risk)...")
+    print("[4] cancelling immediately (zero fill risk)...")
     cancel = ex.cancel_order(oid, sym)
     print(f"[5] CANCELLED  status={cancel.get('status', 'canceled')}")
     print("\nOK — signed order path validated (place + cancel) with NO position opened.")

@@ -22,11 +22,12 @@ import json
 import logging
 import threading
 from collections import defaultdict, deque
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
-from .events import EventType, NormalizedEvent, make_event
 from .event_log import EventLog
-from .schema_registry import registry, SchemaError
+from .events import EventType, NormalizedEvent
+from .schema_registry import SchemaError, registry
 
 log = logging.getLogger("core.bus")
 
@@ -53,7 +54,7 @@ class MessageBus:
     def __init__(
         self,
         backend: str = "memory",
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         replay: bool = False,
         event_log: EventLog | None = None,
     ) -> None:
@@ -61,8 +62,8 @@ class MessageBus:
         self.redis_url = redis_url
         self.replay = replay
         self._event_log = event_log
-        self._subs: Dict[str, List[Handler]] = defaultdict(list)
-        self._subs_all: List[Handler] = []
+        self._subs: dict[str, list[Handler]] = defaultdict(list)
+        self._subs_all: list[Handler] = []
         self._lock = threading.RLock()
         self._replay_queue: deque[NormalizedEvent] = deque()
         self._redis = None
@@ -162,7 +163,7 @@ class MessageBus:
         """Add an event to the replay queue without dispatching."""
         self._replay_queue.append(event)
 
-    def step_replay(self) -> Optional[NormalizedEvent]:
+    def step_replay(self) -> NormalizedEvent | None:
         """Dispatch the next queued event (in order) and return it, or None if empty."""
         if not self._replay_queue:
             return None
@@ -197,7 +198,7 @@ class MessageBus:
 
 
 # Convenience module-level singleton used by the orchestrator. Tests build their own.
-_default_bus: Optional[MessageBus] = None
+_default_bus: MessageBus | None = None
 
 
 def get_bus() -> MessageBus:

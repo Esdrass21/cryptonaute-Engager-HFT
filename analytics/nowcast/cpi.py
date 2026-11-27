@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict
 
 from analytics.nowcast.base import NowcastBase
 
@@ -55,7 +54,7 @@ _DEFAULT_REGIME_SCALE = 1.2
 
 class _CPIState:
     def __init__(self) -> None:
-        self.v: Dict[str, float | None] = {k: None for k in FEATURES}
+        self.v: dict[str, float | None] = dict.fromkeys(FEATURES)
         self._prev_gas: float | None = None
         self._prev_oil: float | None = None
         self._prev_used: float | None = None
@@ -85,7 +84,7 @@ class _CPIState:
         if key in self.v:
             self.v[key] = float(value)
 
-    def as_dict(self) -> Dict[str, float]:
+    def as_dict(self) -> dict[str, float]:
         return {k: (v if v is not None else 0.0) for k, v in self.v.items()}
 
     def coverage(self) -> float:
@@ -102,16 +101,16 @@ class CPINowcast(NowcastBase):
     def release_ids(self) -> list[str]:
         return ["CPI_MOM", "CPI_YOY", "CORE_CPI_YOY"]
 
-    def features(self) -> Dict[str, float]:
+    def features(self) -> dict[str, float]:
         return self.state.as_dict()
 
-    def predict(self, features: Dict[str, float]) -> tuple[float, float]:
+    def predict(self, features: dict[str, float]) -> tuple[float, float]:
         mean = self.coef["intercept"]
         for k in FEATURES:
             mean += self.coef.get(k, 0.0) * features.get(k, 0.0)
         return mean, self.rmse * self.scale
 
-    def _load(self, cfg) -> tuple[Dict[str, float], float, float]:
+    def _load(self, cfg) -> tuple[dict[str, float], float, float]:
         path = cfg.get("nowcast.cpi.coefficients_path",
                        "config/nowcast/cpi_coefficients.json")
         p = Path(path)

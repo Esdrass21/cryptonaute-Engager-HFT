@@ -27,13 +27,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -42,7 +39,7 @@ log = logging.getLogger("data.consensus")
 FXM_BASE = "https://api.fxmacrodata.com/v1"
 
 # Map our internal release_id -> (currency, fxmacrodata_indicator_slug)
-_RELEASE_TO_FXM: Dict[str, tuple[str, str]] = {
+_RELEASE_TO_FXM: dict[str, tuple[str, str]] = {
     "CPI_YOY":            ("usd", "inflation"),
     "CORE_CPI_YOY":       ("usd", "core_inflation"),
     "PCE_YOY":            ("usd", "pce"),
@@ -62,23 +59,23 @@ _RELEASE_TO_FXM: Dict[str, tuple[str, str]] = {
 @dataclass(frozen=True)
 class Consensus:
     release_id: str
-    value: Optional[float]
-    prior: Optional[float]
+    value: float | None
+    prior: float | None
     source: str                 # "config" | "fxmacrodata" | "cache" | "none"
-    announcement_id: Optional[str] = None
-    raw: Optional[Dict[str, Any]] = None
+    announcement_id: str | None = None
+    raw: dict[str, Any] | None = None
 
 
 class ConsensusFeed(Component):
     def __init__(self, bus, cfg, clock, metrics) -> None:
         super().__init__(bus, cfg, clock, metrics, name="data.consensus")
         self.api_key = cfg.secret("FXMACRODATA_API_KEY")
-        self._overrides: Dict[str, Dict[str, Any]] = {
+        self._overrides: dict[str, dict[str, Any]] = {
             o["release_id"]: o
             for o in (cfg.get("data.consensus.overrides", []) or [])
         }
-        self._cache: Dict[str, Consensus] = {}
-        self._http: Optional[HttpClient] = None
+        self._cache: dict[str, Consensus] = {}
+        self._http: HttpClient | None = None
         if self.api_key:
             self._http = HttpClient(rate_per_sec=1.0, burst=3.0,
                                     user_agent="Cryptonaute/3.0 (research)")
@@ -143,7 +140,7 @@ class ConsensusFeed(Component):
         return Consensus(release_id=release_id, value=None, prior=None, source="none")
 
     # ------------------------------------------------------------------ #
-    def _fetch_fxm(self, release_id: str) -> Optional[Consensus]:
+    def _fetch_fxm(self, release_id: str) -> Consensus | None:
         pair = _RELEASE_TO_FXM.get(release_id)
         if pair is None:
             return None
@@ -193,7 +190,7 @@ class ConsensusFeed(Component):
             self._http.close()
 
 
-def _f(v: Any) -> Optional[float]:
+def _f(v: Any) -> float | None:
     if v is None or v == "":
         return None
     try:

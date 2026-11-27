@@ -5,7 +5,7 @@ import pytest
 from core.bus import MessageBus
 from core.event_log import InMemoryEventLog
 from core.events import make_event
-from core.keys import KeyManager, FileKeyProvider
+from core.keys import FileKeyProvider, KeyManager
 from core.schema_registry import register_default_schemas
 from execution.order_manager import OrderManager
 from risk_management.signing import sign_veto

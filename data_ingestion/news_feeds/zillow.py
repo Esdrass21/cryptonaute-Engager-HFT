@@ -24,14 +24,9 @@ import io
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -62,7 +57,7 @@ class ZoriPoint:
 
 
 def parse_zori_csv(text: str, region: str = ZORI_US_REGION,
-                   max_points: int = 36) -> List[ZoriPoint]:
+                   max_points: int = 36) -> list[ZoriPoint]:
     """
     Parse a Zillow ZORI CSV. Keeps the last `max_points` monthly observations
     for the requested region. Returns points ascending by date.
@@ -87,7 +82,7 @@ def parse_zori_csv(text: str, region: str = ZORI_US_REGION,
     for row in reader:
         if (row.get(region_key) or "").strip() != region:
             continue
-        points: List[ZoriPoint] = []
+        points: list[ZoriPoint] = []
         for c in date_cols[-max_points:]:
             raw = (row.get(c) or "").strip()
             if not raw:
@@ -100,7 +95,7 @@ def parse_zori_csv(text: str, region: str = ZORI_US_REGION,
     return []
 
 
-def zori_yoy(points: List[ZoriPoint]) -> Optional[float]:
+def zori_yoy(points: list[ZoriPoint]) -> float | None:
     """YoY % change using the latest point and the same-month-last-year point."""
     if len(points) < 13:
         return None
@@ -130,7 +125,7 @@ _MANHEIM_RE = re.compile(
 )
 
 
-def parse_manheim_html(html: str) -> Optional[float]:
+def parse_manheim_html(html: str) -> float | None:
     m = _MANHEIM_RE.search(html)
     if not m:
         return None
@@ -164,8 +159,8 @@ class ZillowFeed(Component):
         self.manheim_url = str(cfg.get("data.news.zillow.manheim_url", MANHEIM_PAGE_URL))
         self.us_region = str(cfg.get("data.news.zillow.us_region", ZORI_US_REGION))
         self._last_poll = 0.0
-        self._last_values: Dict[str, float] = {}
-        self._http: Optional[HttpClient] = None
+        self._last_values: dict[str, float] = {}
+        self._http: HttpClient | None = None
         if bool(cfg.get("data.news.zillow.enabled", True)):
             self._http = HttpClient(rate_per_sec=0.5, burst=1.0)
 
@@ -234,7 +229,7 @@ class ZillowFeed(Component):
 
     def _poll_manheim(self) -> None:
         # Primary: scrape Cox's public research page.
-        value: Optional[float] = None
+        value: float | None = None
         try:
             resp = self._http.get(self.manheim_url, timeout=10.0)
             if resp.status_code == 200:
@@ -272,7 +267,7 @@ class ZillowFeed(Component):
         ))
         self.metrics.inc("manheim_observation", source=source)
 
-    def _fetch_fred_used_cars_proxy(self) -> Optional[float]:
+    def _fetch_fred_used_cars_proxy(self) -> float | None:
         """
         Pull CUSR0000SETA02 (CPI used cars and trucks) from the public FRED
         CSV endpoint — no key required for the downloader.
@@ -285,7 +280,7 @@ class ZillowFeed(Component):
                 return None
         except Exception:  # noqa: BLE001
             return None
-        lines = [l for l in resp.text.splitlines() if l and not l.startswith("DATE")]
+        lines = [line for line in resp.text.splitlines() if line and not line.startswith("DATE")]
         if len(lines) < 2:
             return None
         last, prev = lines[-1], lines[-2]

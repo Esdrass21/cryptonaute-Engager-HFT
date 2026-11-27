@@ -13,15 +13,15 @@ unable to deploy a tradeable strategy:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.config import Config
-from validation.tuning import tune, best_passing
 from data_ingestion.generate_sample import generate, load_jsonl
+from main import _gate_override, evaluate_gate
+from validation.tuning import best_passing, tune
 
 
 def test_replay_cascade_resolves_before_next_raw_event():
@@ -132,3 +132,62 @@ def test_validate_gate_verdict_logic():
     gate_pass = (net > 0.0) and (dd <= max_dd)
     # noise has no real edge -> gate must reject
     assert not gate_pass, f"noise unexpectedly passed the gate (net={net}, dd={dd})"
+
+
+def test_gate_decision_helper_paper_vs_live():
+    """Gate decision helper respects per-mode overrides (reviewer #1)."""
+    class Args:
+        live = False
+
+    gate = {
+        "min_dsr": 0.0, "max_pbo": 0.5, "max_daily_drawdown_pct": 2.0,
+        "live": {"min_dsr": 0.95, "max_pbo": 0.3, "max_daily_drawdown_pct": 0.5},
+    }
+    paper = _gate_override(gate, Args())
+    Args.live = True
+    live = _gate_override(gate, Args())
+
+    assert paper["min_dsr"] < live["min_dsr"]          # 0.0 < 0.95
+    assert paper["max_pbo"] > live["max_pbo"]          # 0.5 > 0.3
+    assert paper["max_daily_drawdown_pct"] > live["max_daily_drawdown_pct"]
+
+    assert evaluate_gate(True, True) == (True, "PASS")
+    assert evaluate_gate(False, True) == (False, "FAIL")
+    assert evaluate_gate(True, False) == (False, "FAIL")  # DSR/PBO meta fail
+
+
+def test_gate_decision_helper_evaluates_noise_and_edge():
+    """Pure noise (GBM, net<=0) must FAIL; trended+tuned (net>0) must PASS."""
+    assert evaluate_gate(False, True) == (False, "FAIL")  # noise: base fails
+    assert evaluate_gate(True, True) == (True, "PASS")    # edge + meta pass
+    assert evaluate_gate(True, False) == (False, "FAIL")  # overfit: meta fails
+
+
+def test_config_gate_is_single_source_of_truth():
+    """The gate section (DSR / PBO / drawdown, per-mode overrides) is the
+    single source of truth the CLI reads for --validate."""
+    import yaml
+
+    from main import _gate_override
+
+    default = Path(__file__).resolve().parent.parent / "config" / "default.yaml"
+    with open(default) as f:
+        cfg = yaml.safe_load(f)
+
+    gate = cfg["validation"]["gate"]
+    assert gate["min_dsr"] == 0.0
+    assert gate["max_pbo"] == 0.5
+    assert gate["max_daily_drawdown_pct"] == 2.0
+    assert gate["live"]["min_dsr"] == 0.95
+    assert gate["live"]["max_pbo"] == 0.3
+    assert gate["live"]["max_daily_drawdown_pct"] == 0.5
+
+    class Args:
+        live = False
+    assert _gate_override(gate, Args()) == {
+        "min_dsr": 0.0, "max_pbo": 0.5, "max_daily_drawdown_pct": 2.0,
+    }
+    Args.live = True
+    assert _gate_override(gate, Args()) == {
+        "min_dsr": 0.95, "max_pbo": 0.3, "max_daily_drawdown_pct": 0.5,
+    }

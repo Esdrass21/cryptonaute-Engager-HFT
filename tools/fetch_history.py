@@ -25,8 +25,8 @@ import json
 import logging
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
-from typing import List
 
 from core.config import Config
 from data_ingestion.market_feeds.providers import fetch_history
@@ -34,7 +34,7 @@ from data_ingestion.market_feeds.providers import fetch_history
 log = logging.getLogger("tools.fetch_history")
 
 
-def _fetch_ccxt(cfg: Config, symbols: List[str], timeframe: str,
+def _fetch_ccxt(cfg: Config, symbols: list[str], timeframe: str,
                 start_ms: int, end_ms: int) -> list:
     """Public crypto OHLCV via ccxt (no API key)."""
     import ccxt
@@ -76,10 +76,11 @@ def _fetch_ccxt(cfg: Config, symbols: List[str], timeframe: str,
     return events
 
 
-def _fetch_mt5(cfg: Config, symbols: List[str], timeframe: str,
+def _fetch_mt5(cfg: Config, symbols: list[str], timeframe: str,
                start_ms: int, end_ms: int) -> list:
     """History from a running MetaTrader 5 terminal (forex/commodities universe)."""
     import MetaTrader5 as mt5
+
     from data_ingestion.normalizer import normalize_candle, normalize_tick
 
     tf_map = {"M1": mt5.TIMEFRAME_M1, "M5": mt5.TIMEFRAME_M5,
@@ -121,15 +122,16 @@ def _fetch_mt5(cfg: Config, symbols: List[str], timeframe: str,
 
 
 def pd_datetime(ms: int):
-    from datetime import datetime, timezone
-    return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc)
+    from datetime import datetime
+    return datetime.fromtimestamp(ms / 1000.0, tz=UTC)
 
 
-def _fetch_finazon_grpc(cfg: Config, symbols: List[str], timeframe: str,
+def _fetch_finazon_grpc(cfg: Config, symbols: list[str], timeframe: str,
                         start_ms: int, end_ms: int) -> list:
     """History via the official finazon-grpc-python client (paged)."""
-    from finazon_grpc_python.time_series_service import TimeSeriesService, GetTimeSeriesRequest
     from finazon_grpc_python.common.errors import FinazonGrpcRequestError
+    from finazon_grpc_python.time_series_service import GetTimeSeriesRequest, TimeSeriesService
+
     from data_ingestion.normalizer import normalize_candle, normalize_tick
 
     key = os.environ.get("FINAZON_API_KEY", "")
@@ -169,12 +171,13 @@ def _fetch_finazon_grpc(cfg: Config, symbols: List[str], timeframe: str,
     return events
 
 
-def _fetch_alphavantage_lib(cfg: Config, symbols: List[str], timeframe: str,
+def _fetch_alphavantage_lib(cfg: Config, symbols: list[str], timeframe: str,
                             start_ms: int, end_ms: int) -> list:
     """History via the RomelTorres/alpha_vantage wrapper (FX/daily granularity)."""
-    from alpha_vantage.foreignexchange import ForeignExchange
     from alpha_vantage.cryptocurrencies import CryptoCurrencies
+    from alpha_vantage.foreignexchange import ForeignExchange
     from alpha_vantage.timeseries import TimeSeries
+
     from data_ingestion.normalizer import normalize_candle
 
     key = os.environ.get("ALPHAVANTAGE_API_KEY", "")
@@ -233,10 +236,10 @@ def main() -> int:
     else:
         symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
 
-    from datetime import datetime, timezone
-    start_ms = int(datetime.fromisoformat(args.start).replace(tzinfo=timezone.utc).timestamp() * 1000)
-    end_ms = int((datetime.fromisoformat(args.end).replace(tzinfo=timezone.utc)
-                  if args.end else datetime.now(timezone.utc)).timestamp() * 1000)
+    from datetime import datetime
+    start_ms = int(datetime.fromisoformat(args.start).replace(tzinfo=UTC).timestamp() * 1000)
+    end_ms = int((datetime.fromisoformat(args.end).replace(tzinfo=UTC)
+                  if args.end else datetime.now(UTC)).timestamp() * 1000)
 
     if args.provider == "ccxt":
         events = _fetch_ccxt(cfg, symbols, args.timeframe, start_ms, end_ms)

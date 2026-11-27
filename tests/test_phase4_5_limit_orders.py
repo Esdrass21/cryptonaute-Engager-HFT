@@ -1,10 +1,11 @@
 """Phase 4.5 — limit orders + queue position tests."""
 import math
 from pathlib import Path
+
 import pytest
 
 from core.config import Config
-from execution.book import RestingOrder, FillEvent
+from execution.book import FillEvent, RestingOrder
 from execution.broker_adapter import PaperBroker
 
 
@@ -100,7 +101,7 @@ def test_full_fill_when_price_sweeps_through_limit():
                              "execution.book.top_size_notional": 500.0}),
                      _Clock(1.0), starting_balance=10_000.0)
     br.update_price("X", 100.0)
-    res = br.send_limit_order("X", "buy", limit_price=99.98, notional=200.0, ttl_s=100.0)
+    _res = br.send_limit_order("X", "buy", limit_price=99.98, notional=200.0, ttl_s=100.0)
     # Sweep hard below the limit.
     br.update_price("X", 95.0)
     fills = br.drain_fills()

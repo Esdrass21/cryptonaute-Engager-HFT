@@ -15,16 +15,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from core.bus import MessageBus
 from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
+from core.events import EventType, NormalizedEvent, make_event
 from core.metrics import Metrics
-
 from data_ingestion.generate_sample import generate, load_jsonl, write_jsonl
 from execution.broker_adapter import PaperBroker
 from execution.order_manager import OrderManager
-from strategy_engine.state_machine import StrategyOrchestrator
 from risk_management.veto_service import RiskVetoService
+from strategy_engine.state_machine import StrategyOrchestrator
 from validation.replay_harness import ReplayHarness
-from validation.tuning import tune, best_passing
+from validation.tuning import best_passing, tune
 
 
 def _build_harness(cfg, events):

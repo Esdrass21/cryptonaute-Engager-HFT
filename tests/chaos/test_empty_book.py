@@ -1,5 +1,6 @@
 """Chaos: an empty book. Fills must not occur; system must not crash."""
 import pytest
+
 from execution.book import OrderBook, walk_book
 
 pytestmark = pytest.mark.chaos

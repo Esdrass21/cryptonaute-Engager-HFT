@@ -20,7 +20,8 @@ from validation.strategy_lab import (
 
 def _write_history(tmp_path: Path, n: int = 2200) -> Path:
     idx = pd.date_range("2026-01-01", periods=n, freq="5min", tz="UTC")
-    ts = (idx.astype("int64") // 10**9).astype(float)
+    epoch = pd.Timestamp("1970-01-01", tz="UTC")
+    ts = ((idx - epoch) / pd.Timedelta(1, "s")).astype(float)
     rng = np.random.default_rng(7)
     close = 100 + np.cumsum(rng.normal(0.0005, 0.02, n))
     path = tmp_path / "hist.jsonl"

@@ -13,19 +13,17 @@
 from __future__ import annotations
 
 import logging
-import time
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
 
-from core.bus import MessageBus
-from core.component import Component
 from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
 from execution.book import (
-    OrderBook, synthesize_book, walk_book,
-    RestingOrder, FillEvent,
+    FillEvent,
+    OrderBook,
+    RestingOrder,
+    synthesize_book,
+    walk_book,
 )
+from execution.financing import SwapSchedule, schedule_from_config
 
 log = logging.getLogger("execution.broker")
 
@@ -49,7 +47,7 @@ class BrokerAdapter(ABC):
     def get_account_state(self) -> dict: ...
 
     @abstractmethod
-    def get_open_positions(self) -> List[dict]: ...
+    def get_open_positions(self) -> list[dict]: ...
 
 
 class PaperBroker(BrokerAdapter):
@@ -85,10 +83,10 @@ class PaperBroker(BrokerAdapter):
         self.balance = starting_balance
         self.equity_peak = starting_balance
 
-        self._positions: Dict[str, dict] = {}
+        self._positions: dict[str, dict] = {}
         self._tickets = 0
-        self._last_price: Dict[str, float] = {}
-        self._books: Dict[str, OrderBook] = {}
+        self._last_price: dict[str, float] = {}
+        self._books: dict[str, OrderBook] = {}
 
         # Book synthesis config (with safe defaults).
         self._n_levels = int(cfg.get("execution.book.n_levels", 5))
@@ -98,9 +96,17 @@ class PaperBroker(BrokerAdapter):
         self._size_jitter = float(cfg.get("execution.book.size_jitter", 0.25))
         self._commission_bps = float(cfg.get("execution.commission_bps", 0.0))
 
+        # Overnight swap / rollover financing (opt-in via execution.swap.enabled).
+        swap_cfg = cfg.get("execution.swap", None) or {}
+        self._swap: SwapSchedule | None = (
+            schedule_from_config(cfg, "execution.swap")
+            if swap_cfg.get("enabled", False) else None
+        )
+        self._last_swap_day: dict[str, object] = {}
+
         # Phase 4.5 — limit orders + queue model
-        self._resting: Dict[str, RestingOrder] = {}
-        self._pending_fills: List[FillEvent] = []
+        self._resting: dict[str, RestingOrder] = {}
+        self._pending_fills: list[FillEvent] = []
         self._flow_multiplier = float(cfg.get("execution.queue_flow_multiplier", 5.0))
         self._erosion_rate = float(cfg.get("execution.queue_erosion_rate", 0.05))
         self._erosion_ticks = int(cfg.get("execution.queue_erosion_ticks", 2))
@@ -137,8 +143,9 @@ class PaperBroker(BrokerAdapter):
         """
         Advance the market. Synthesizes a fresh book, then processes any
         resting limit orders against the implied trade volume. No SL/TP here
-        — see OrderManager.
+        — see OrderManager. Also applies overnight swap financing when enabled.
         """
+        self._charge_swap(symbol, self.clock.now())
         prev = self._last_price.get(symbol, mid)
         self._last_price[symbol] = mid
         self._books.pop(symbol, None)       # force re-synthesis from new mid
@@ -155,6 +162,47 @@ class PaperBroker(BrokerAdapter):
         book = OrderBook.from_levels(bids, asks)
         self._books[symbol] = book
         self._last_price[symbol] = book.mid()
+
+    # ------------------------------------------------------------------ #
+    # Overnight swap / rollover financing                                 #
+    # ------------------------------------------------------------------ #
+
+    def _charge_swap(self, symbol: str, now: float) -> float:
+        """Debit financing once per calendar day rollover for a held position."""
+        if self._swap is None or not self._swap.enabled:
+            return 0.0
+        pos = self._positions.get(symbol)
+        if pos is None:
+            return 0.0
+        try:
+            import pandas as pd
+            stamp = pd.Timestamp(now, unit="s", tz="UTC")
+        except Exception:  # noqa: BLE001 - non-epoch clock in tests
+            return 0.0
+
+        # Only the first tick at/after the daily cut triggers a charge; ticks
+        # before the cut leave the day "uncharged" until the window opens.
+        if stamp.hour < self._swap.rollover_hour_utc:
+            return 0.0
+        day = stamp.date()
+        prev_day = self._last_swap_day.get(symbol)
+        # No charge if the day was already settled (or never opened). A None
+        # prev_day means this is the first post-cut tick, so charge now.
+        if prev_day == day:
+            return 0.0
+        self._last_swap_day[symbol] = day
+
+        side = 1.0 if pos["side"] == "buy" else -1.0
+        bps = self._swap.rate_for_side(symbol, side)
+        if bps == 0.0:
+            self._last_swap_day[symbol] = day
+            return 0.0
+        cost = abs(float(pos["volume"])) * bps * self._swap.multiplier_for(stamp) / 1e4
+        self._last_swap_day[symbol] = day
+        if cost:
+            self.balance -= cost
+            pos["financing"] = float(pos.get("financing", 0.0)) + cost
+        return cost
 
     # ------------------------------------------------------------------ #
     # Phase 4.5 — limit orders + queue position                           #
@@ -239,16 +287,16 @@ class PaperBroker(BrokerAdapter):
         o.state = "cancelled"
         return self.send_limit_order(symbol, side, float(new_limit_price), notional, ttl_s=ttl)
 
-    def drain_fills(self) -> List[FillEvent]:
+    def drain_fills(self) -> list[FillEvent]:
         """Return and clear pending fill events."""
         out = self._pending_fills
         self._pending_fills = []
         return out
 
-    def get_resting_order(self, order_id: str) -> Optional[RestingOrder]:
+    def get_resting_order(self, order_id: str) -> RestingOrder | None:
         return self._resting.get(order_id)
 
-    def get_resting_orders(self, symbol: Optional[str] = None) -> List[RestingOrder]:
+    def get_resting_orders(self, symbol: str | None = None) -> list[RestingOrder]:
         orders = [o for o in self._resting.values() if o.is_open]
         if symbol is not None:
             orders = [o for o in orders if o.symbol == symbol]
@@ -261,10 +309,10 @@ class PaperBroker(BrokerAdapter):
     @staticmethod
     def _queue_depth_at(book: OrderBook, side: str, limit_price: float) -> float:
         if side == "buy":
-            levels = [l for l in book.bids if l.price >= limit_price]
+            levels = [level for level in book.bids if level.price >= limit_price]
         else:
-            levels = [l for l in book.asks if l.price <= limit_price]
-        return sum(l.notional for l in levels)
+            levels = [level for level in book.asks if level.price <= limit_price]
+        return sum(level.notional for level in levels)
 
     def _synthesize_trade_volume(self, prev_mid: float, new_mid: float) -> float:
         """Trade volume implied by a mid move. Deterministic."""
@@ -447,6 +495,7 @@ class PaperBroker(BrokerAdapter):
             "gross_pnl": gross_pnl,
             "commission": close_commission,
             "open_commission": pos.get("open_commission", 0.0),
+            "financing": pos.get("financing", 0.0),
             "partial": walk.remaining_notional > 0.0,
         }
 
@@ -458,7 +507,7 @@ class PaperBroker(BrokerAdapter):
             "drawdown_pct": max(0.0, (self.equity_peak - self.balance) / self.equity_peak * 100.0),
         }
 
-    def get_open_positions(self) -> List[dict]:
+    def get_open_positions(self) -> list[dict]:
         return list(self._positions.values())
 
 
@@ -501,7 +550,7 @@ class MT5Broker(BrokerAdapter):  # pragma: no cover - requires live terminal
         acc = self._mt5.account_info()
         return {"balance": acc.balance, "equity": acc.equity, "drawdown_pct": acc.max_drawdown}
 
-    def get_open_positions(self) -> List[dict]:
+    def get_open_positions(self) -> list[dict]:
         return [{"ticket": p.ticket, "symbol": p.symbol, "side": "buy" if p.type == 0 else "sell",
                  "volume": p.volume, "open_price": p.price_open} for p in self._mt5.positions_get() or []]
 
@@ -562,7 +611,7 @@ class CryptoBroker(BrokerAdapter):  # pragma: no cover - requires network
                 return {"balance": float(bal[q]["total"]), "broker": self.exchange_id}
         return {"balance": float(bal.get("total", {}).get("USDT", 0.0)), "broker": self.exchange_id}
 
-    def get_open_positions(self) -> List[dict]:
+    def get_open_positions(self) -> list[dict]:
         return []
 
 

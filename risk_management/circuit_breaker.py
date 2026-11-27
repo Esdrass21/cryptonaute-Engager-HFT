@@ -11,14 +11,12 @@ from __future__ import annotations
 
 import logging
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
-
 from risk_management.two_person import (
-    Approval, TwoPersonRule, TwoPersonError, ACTION_CIRCUIT_BREAKER_RESET,
+    ACTION_CIRCUIT_BREAKER_RESET,
+    Approval,
+    TwoPersonRule,
 )
 
 log = logging.getLogger("risk.circuit")

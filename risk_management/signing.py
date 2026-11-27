@@ -13,12 +13,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Tuple
 
 from core.keys import KeyManager
 
 
-def sign_veto(km: KeyManager, proposal: dict, decision: str, reason: str = "", ts: float = 0.0) -> Tuple[dict, dict]:
+def sign_veto(km: KeyManager, proposal: dict, decision: str, reason: str = "", ts: float = 0.0) -> tuple[dict, dict]:
     """Sign a veto decision. Returns (signed_payload, signature_dict).
 
     The signed payload is a flat canonical dict (sorted by key) of proposal fields +

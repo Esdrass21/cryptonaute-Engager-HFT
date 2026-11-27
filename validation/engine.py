@@ -26,14 +26,12 @@ not a reimplementation.
 
 from __future__ import annotations
 
-import copy
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from validation.execution_model import ExecutionModel, build_execution_model
+from validation.execution_model import ExecutionModel
 
 log = logging.getLogger("validation.engine")
 
@@ -51,15 +49,15 @@ class Trade:
 
 @dataclass
 class BacktestResult:
-    trades: List[Trade] = field(default_factory=list)
-    equity_curve: List[float] = field(default_factory=list)
+    trades: list[Trade] = field(default_factory=list)
+    equity_curve: list[float] = field(default_factory=list)
     total_pnl: float = 0.0
     win_rate: float = 0.0
     max_drawdown_pct: float = 0.0
     sharpe: float = 0.0
     n: int = 0
 
-    def summary(self) -> Dict[str, float]:
+    def summary(self) -> dict[str, float]:
         return {
             "n_trades": self.n,
             "total_pnl": round(self.total_pnl, 2),
@@ -85,7 +83,7 @@ class FoldSummary:
     oos_returns: np.ndarray
 
 
-def summarize_folds(folds: List[Fold]) -> FoldSummary:
+def summarize_folds(folds: list[Fold]) -> FoldSummary:
     """Aggregate fold results into a single summary."""
     if not folds:
         return FoldSummary(0, 0.0, np.array([]))
@@ -101,7 +99,7 @@ def vectorized_backtest(
     initial_capital: float = 10_000.0,
     fee_pct: float = 0.0005,
     position_pct: float = 2.0,
-    exec_model: Optional[ExecutionModel] = None,
+    exec_model: ExecutionModel | None = None,
     symbol: str = "X",
 ) -> BacktestResult:
     """Simple long/flat/short backtest driven by a precomputed signal in [-1,1].
@@ -116,8 +114,8 @@ def vectorized_backtest(
     """
     equity = initial_capital
     peak = equity
-    eq_curve: List[float] = [equity]
-    trades: List[Trade] = []
+    eq_curve: list[float] = [equity]
+    trades: list[Trade] = []
     pos = 0
     entry_price = 0.0
     entry_t = 0.0
@@ -198,9 +196,9 @@ def walk_forward(
     embargo_pct: float = 0.01,
     horizon: int = 1,
     initial_capital: float = 10_000.0,
-    exec_model: Optional[ExecutionModel] = None,
+    exec_model: ExecutionModel | None = None,
     label_end_idx=None,
-) -> List[Fold]:
+) -> list[Fold]:
     """
     Purged, embargoed walk-forward.
 
@@ -218,7 +216,7 @@ def walk_forward(
         step_pct=step_pct, embargo_pct=embargo_pct, horizon=horizon,
         label_end_idx=label_end_idx,
     )
-    folds: List[Fold] = []
+    folds: list[Fold] = []
     for split in splitter.split(T):
         tr, te = split.train_idx, split.test_idx
         sig = strategy_fn(arr[tr], arr[te])
@@ -235,21 +233,21 @@ def walk_forward(
 
 
 def monte_carlo(
-    trades: List[Trade],
+    trades: list[Trade],
     *,
     n_paths: int = 1000,
     block_size: int = 10,
     initial_capital: float = 10_000.0,
     seed: int = 123,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Block-bootstrap the trade P&L distribution to estimate tail risk (architecture §7.3.3).
 
     Returns percentile bands of final equity and max drawdown across ``n_paths`` resamples.
     """
     rng = np.random.default_rng(seed)
     pnls = np.array([t.pnl for t in trades]) if trades else np.array([0.0])
-    paths_eq: List[float] = []
-    paths_dd: List[float] = []
+    paths_eq: list[float] = []
+    paths_dd: list[float] = []
     for _ in range(n_paths):
         eq = initial_capital
         peak = eq

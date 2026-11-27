@@ -14,11 +14,10 @@ Design:
 from __future__ import annotations
 
 import logging
-import random
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -101,8 +100,8 @@ class HttpClient:
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-    def get(self, url: str, *, params: Optional[Dict[str, Any]] = None,
-            timeout: float = 5.0, headers: Optional[Dict[str, str]] = None):
+    def get(self, url: str, *, params: dict[str, Any] | None = None,
+            timeout: float = 5.0, headers: dict[str, str] | None = None):
         if not self.enabled:
             raise RuntimeError("HttpClient disabled (replay mode)")
         self.bucket.take()
@@ -111,9 +110,9 @@ class HttpClient:
             h.update(headers)
         return self.session.get(url, params=params, timeout=timeout, headers=h)
 
-    def post(self, url: str, *, json_body: Optional[Dict[str, Any]] = None,
-             data: Optional[str] = None, timeout: float = 5.0,
-             headers: Optional[Dict[str, str]] = None):
+    def post(self, url: str, *, json_body: dict[str, Any] | None = None,
+             data: str | None = None, timeout: float = 5.0,
+             headers: dict[str, str] | None = None):
         if not self.enabled:
             raise RuntimeError("HttpClient disabled (replay mode)")
         self.bucket.take()

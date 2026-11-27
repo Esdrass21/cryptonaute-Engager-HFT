@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import List
 
 from core.bus import MessageBus
 from core.component import Component
@@ -17,7 +16,7 @@ from core.config import Clock, Config
 from core.events import EventType, NormalizedEvent
 from core.metrics import Metrics
 
-from ..normalizer import normalize_macro, normalize_news
+from ..normalizer import normalize_news
 
 log = logging.getLogger("data.news")
 
@@ -35,7 +34,7 @@ _SIM_HEADLINES = [
 class NewsFeed(Component):
     def __init__(self, bus, cfg, clock, metrics, name="news"):
         super().__init__(bus, cfg, clock, metrics, name)
-        self.symbols: List[str] = cfg.get("symbols", ["EURUSD"])
+        self.symbols: list[str] = cfg.get("symbols", ["EURUSD"])
 
 
 class SimNewsFeed(NewsFeed):

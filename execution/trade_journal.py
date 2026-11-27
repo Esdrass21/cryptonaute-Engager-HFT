@@ -8,13 +8,9 @@ All lines also land in ``logs/trading.log`` via the root file handler (core/conf
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, NormalizedEvent
-from core.metrics import Metrics
 
 log = logging.getLogger("execution.journal")
 
@@ -47,9 +43,9 @@ class TradeJournal(Component):
             pnl = p.get("pnl", 0.0)
             self._open_pnl[sym] = self._open_pnl.get(sym, 0.0) + pnl
             net = self._open_pnl[sym]
-            tag = "WIN " if pnl >= 0 else "LOSS"
             log.info("CLOSE %s %s @ %.5f  pnl=%+.2f  net=%+.2f  ticket=%s",
                      sym, side, px, pnl, net, p.get("ticket"))
+            self.metrics.inc("fills")
             self.metrics.set(f"pnl_{sym}", net)
         else:
             log.info("FILL  %s %s %.2f @ %.5f  ticket=%s",

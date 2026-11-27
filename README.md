@@ -1174,3 +1174,80 @@ This is a research and trading framework, not financial advice. It can place liv
 ## Versioning
 
 Pre-1.0. Interfaces under `core/` marked `stable` are covered by tests; everything else may change between minor versions. See `CHANGELOG.md` for details.
+
+---
+
+## Layer 4b — Strategy Router + Shadow Mode (new)
+
+The `StrategyRouter` (Layer 4b) combines proposals from multiple strategies (TSMOM, noise_band) into a single unified proposal per symbol, and routes it to the FSM + execution layer.
+
+### Shadow mode (paper simulation)
+When `strategy.shadow.enabled: true` (config/default.yaml), every `ORDER_PROPOSAL` is logged to `data/shadow_proposals.jsonl` **without placing any real broker order**. This lets you validate the routing / combination / gating logic before going live.
+
+```yaml
+strategy:
+  shadow:
+    enabled: true
+    shadow_log: "data/shadow_proposals.jsonl"
+    combine_mode: "priority"
+    priority_strategy_order: ["tsmom", "noise_band"]
+    max_concurrent_proposals: 1
+    min_confidence: 0.6
+    calibrated: false
+```
+
+No API key or external service is required for shadow mode — it runs 100% offline, deterministic, and safe.
+
+---
+
+## HuggingFace Inference (self-correction Layer 3)
+
+The self-correction layer (L3) now uses **HuggingFace Inference** instead of Mistral. This is the free-tier FP32/BF16 LLM endpoint on HuggingFace.
+
+### Configuration
+
+The credentials live in `.env` (never committed). The `.env.example` template shows the expected structure:
+
+```env
+HF_TOKEN=votre_...uite          # HuggingFace API key (read scope, free tier)
+```
+
+Get a free key at https://huggingface.co/settings/tokens (scope: `read`).
+
+The `self_correction/mistral_client.py` module was rewritten to expose:
+
+- `Provider` — unified interface to HuggingFace Inference (fp32/bf16, free tier, no local GPU)
+- `PostTradeReviewer` — async post-trade review (consumes `ORDER_FILL`, emits `POST_TRADE_REVIEW`)
+- `AnomalyDetector` — anomaly detection from `METRIC` / `RISK_BREACH` events (emits `ANOMALY`)
+
+### Quick setup
+
+```bash
+# 1. Copy .env.example to .env
+cp .env.example .env
+
+# 2. Add your HuggingFace API key
+#    (scope: read) — https://huggingface.co/settings/tokens
+sed -i 's/^# HF_TOKEN=.*/HF_TOKEN=votre_...uite/' .env
+
+# 3. Verify the key loads
+.venv312/Scripts/python -c "import os; print('HF_TOKEN set:', bool(os.getenv('HF_TOKEN')))"
+```
+
+### Usage
+
+```python
+from self_correction.mistral_client import Provider, PostTradeReviewer, AnomalyDetector
+
+provider = Provider(bus, cfg, clock, metrics)
+review = provider.complete("Review this closed trade. Reply JSON {cause, recommendation}")
+
+post_trade_reviewer = PostTradeReviewer(bus, cfg, clock, metrics)
+anomaly_detector = AnomalyDetector(bus, cfg, clock, metrics)
+```
+
+### Notes
+
+- Default backend is **stub** (deterministic, zero network) so the pipeline runs end-to-end in tests/paper.
+- Set `HF_TOKEN` to switch to real HuggingFace Inference (rate-limited free tier; no local GPU required).
+- The L3 layer is **strictly asynchronous** — off the critical execution path.

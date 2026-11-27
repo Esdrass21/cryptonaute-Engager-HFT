@@ -24,9 +24,8 @@ import argparse
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -103,7 +102,7 @@ def _apply_transform(df: pd.DataFrame, col: str, transform: str) -> pd.DataFrame
 # ZORI fetcher (rent)                                                          #
 # --------------------------------------------------------------------------- #
 
-def _fetch_zori(region: str = "United States") -> Optional[pd.DataFrame]:
+def _fetch_zori(region: str = "United States") -> pd.DataFrame | None:
     from data_ingestion.news_feeds.retry import HttpClient
     from data_ingestion.news_feeds.zillow import parse_zori_csv
 
@@ -140,8 +139,8 @@ def _fetch_zori(region: str = "United States") -> Optional[pd.DataFrame]:
 # Assemble NFP                                                                 #
 # --------------------------------------------------------------------------- #
 
-def build_nfp(client, start: str, zori: Optional[pd.DataFrame]) -> pd.DataFrame:
-    frames: List[pd.DataFrame] = []
+def build_nfp(client, start: str, zori: pd.DataFrame | None) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
     for feature, (sid, transform) in NFP_FRED.items():
         try:
             raw = _fetch_fred_series(client, sid, start)
@@ -167,8 +166,8 @@ def build_nfp(client, start: str, zori: Optional[pd.DataFrame]) -> pd.DataFrame:
 # Assemble CPI                                                                 #
 # --------------------------------------------------------------------------- #
 
-def build_cpi(client, start: str, zori: Optional[pd.DataFrame]) -> pd.DataFrame:
-    frames: List[pd.DataFrame] = []
+def build_cpi(client, start: str, zori: pd.DataFrame | None) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
     for feature, (sid, transform) in CPI_FRED.items():
         try:
             raw = _fetch_fred_series(client, sid, start)
@@ -223,9 +222,9 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    report: Dict[str, object] = {
+    report: dict[str, object] = {
         "start": args.start,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
     }
 
     zori = None

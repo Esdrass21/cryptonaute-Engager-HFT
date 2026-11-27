@@ -13,8 +13,8 @@ No scipy dependency: uses math.erf and Acklam's inverse-normal-CDF.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import numpy as np
 
@@ -71,7 +71,7 @@ class SharpeStats:
     annualized: float      # sharpe * sqrt(periods_per_year) if caller passes it
 
     @classmethod
-    def from_returns(cls, returns: Sequence[float], periods_per_year: int = 252) -> "SharpeStats":
+    def from_returns(cls, returns: Sequence[float], periods_per_year: int = 252) -> SharpeStats:
         r = np.asarray(returns, dtype=float)
         r = r[np.isfinite(r)]
         n = len(r)

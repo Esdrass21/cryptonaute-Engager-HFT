@@ -11,13 +11,9 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
 from core.events import EventType, make_event
-from core.metrics import Metrics
 
 from .retry import HttpClient
 
@@ -32,7 +28,7 @@ _CUTS_RE = re.compile(
 )
 
 
-def parse_challenger_cuts(text: str) -> Optional[float]:
+def parse_challenger_cuts(text: str) -> float | None:
     m = _CUTS_RE.search(text)
     if not m:
         return None
@@ -53,8 +49,8 @@ class ChallengerFeed(Component):
         self.poll_interval_s = float(cfg.get("data.news.challenger.poll_interval_s", 86400.0))
         self.url = str(cfg.get("data.news.challenger.url", CHALLENGER_BLOG))
         self._last_poll = 0.0
-        self._last_value: Optional[float] = None
-        self._http: Optional[HttpClient] = None
+        self._last_value: float | None = None
+        self._http: HttpClient | None = None
         if bool(cfg.get("data.news.challenger.enabled", True)):
             self._http = HttpClient(rate_per_sec=0.5, burst=1.0)
 

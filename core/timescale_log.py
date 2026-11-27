@@ -47,7 +47,8 @@ import json
 import logging
 import os
 import threading
-from typing import Any, Dict, Iterator, Optional
+from collections.abc import Iterator
+from typing import Any
 
 from core.event_log import EventLog
 
@@ -94,9 +95,9 @@ def _import_driver():
 class TimescaleEventLog(EventLog):
     def __init__(
         self,
-        dsn: Optional[str] = None,
+        dsn: str | None = None,
         *,
-        retention_months: Optional[int] = None,
+        retention_months: int | None = None,
         create_schema: bool = True,
         batch_size: int = 1,
     ) -> None:
@@ -128,7 +129,7 @@ class TimescaleEventLog(EventLog):
             )
         log.info("Timescale retention: %d months", months)
 
-    def _normalize(self, event: Dict[str, Any]) -> tuple:
+    def _normalize(self, event: dict[str, Any]) -> tuple:
         ts = float(event.get("ts") or event.get("timestamp") or 0.0)
         etype = str(event.get("type", "unknown"))
         version = int(event.get("version", 1))
@@ -143,7 +144,7 @@ class TimescaleEventLog(EventLog):
                 symbol = symbol[0] if symbol else None
         return (ts, etype, version, symbol, json.dumps(payload))
 
-    def append(self, event: Dict[str, Any]) -> None:
+    def append(self, event: dict[str, Any]) -> None:
         row = self._normalize(event)
         with self._lock:
             self._batch.append(row)
@@ -166,10 +167,10 @@ class TimescaleEventLog(EventLog):
         with self._lock:
             self._flush_locked()
 
-    def replay(self) -> Iterator[Dict[str, Any]]:
+    def replay(self) -> Iterator[dict[str, Any]]:
         return self.replay_from(0)
 
-    def replay_from(self, offset: int = 0) -> Iterator[Dict[str, Any]]:
+    def replay_from(self, offset: int = 0) -> Iterator[dict[str, Any]]:
         with self._conn.cursor() as cur:
             cur.execute(
                 "SELECT id, ts, type, version, payload FROM events "
@@ -194,7 +195,7 @@ class TimescaleEventLog(EventLog):
             (n,) = cur.fetchone()
         return int(n)
 
-    def query_since(self, ts: float, event_type: Optional[str] = None) -> Iterator[Dict[str, Any]]:
+    def query_since(self, ts: float, event_type: str | None = None) -> Iterator[dict[str, Any]]:
         sql = "SELECT id, ts, type, version, payload FROM events WHERE ts >= to_timestamp(%s)"
         params = [float(ts)]
         if event_type:
@@ -229,7 +230,7 @@ class TimescaleEventLog(EventLog):
             pass
 
 
-def build_timescale_log(cfg: Dict[str, Any] | None) -> Optional[TimescaleEventLog]:
+def build_timescale_log(cfg: dict[str, Any] | None) -> TimescaleEventLog | None:
     cfg = cfg or {}
     if (cfg.get("backend") or "").lower() != "timescale":
         return None

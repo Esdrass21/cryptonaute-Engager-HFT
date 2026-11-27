@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from core.events import EventType, NormalizedEvent, make_event
 from core.bus import MessageBus
-from core.config import Config, Clock
+from core.config import Clock, Config
+from core.events import EventType, NormalizedEvent, make_event
 from core.metrics import Metrics
-from data_ingestion.normalizer import normalize_candle, normalize_news, normalize_tick
 from data_ingestion.market_feeds.feeds import SimMarketFeed
+from data_ingestion.normalizer import normalize_candle, normalize_news, normalize_tick
 
 
 def test_event_roundtrip():
@@ -158,6 +158,7 @@ def test_crypto_feed_fails_over_without_mixing_exchange_events():
 def test_rss_news_feed_emits_from_mocked_feedparser(monkeypatch):
     """RSSNewsFeed emits NEWS events from a fake feedparser (no network)."""
     import types
+
     from data_ingestion.news_feeds import feeds as nfeeds
 
     fake = types.SimpleNamespace(entries=[

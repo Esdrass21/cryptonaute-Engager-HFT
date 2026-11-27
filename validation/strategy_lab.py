@@ -27,6 +27,10 @@ Method (no lookahead, honest costs):
     10 = stressed spread+fee, e.g. FX brokers / weekend crypto.)
   * Position sizing is unit notional (pos ∈ [-1, +1] x capital) except TSMOM
     variants, which are vol-scaled and capped at 1.0.
+  * Overnight swap / rollover financing is charged on positions held across the
+    daily cut (execution/financing.py): per-family bps of notional per night,
+    triple on Wednesday by default. TSMOM holds for days, so this matters; turn
+    it off with --no-swap or supply real broker rates with --swap-config.
   * Sharpe annualizes with sqrt(105120) (288 M5 bars/day, 365 days).
 
 Outputs (data/history/strategy_lab/ by default):
@@ -43,11 +47,19 @@ import argparse
 import itertools
 import json
 import math
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
+
+from execution.financing import (
+    SwapSchedule,
+    default_schedule,
+    financing_series,
+    load_swap_schedule,
+    summarize_financing,
+)
 
 BARS_PER_YEAR = 288 * 365
 COST_LEVELS = [0.0, 1.0, 5.0, 10.0]  # bps per side
@@ -57,8 +69,8 @@ VOL_WIN = 288  # 1 day of M5 bars for the vol estimator
 # data loading
 # --------------------------------------------------------------------------
 
-def load_candles(path: Path, timeframe: str = "M5") -> Dict[str, pd.DataFrame]:
-    per_sym: Dict[str, list] = {}
+def load_candles(path: Path, timeframe: str = "M5") -> dict[str, pd.DataFrame]:
+    per_sym: dict[str, list] = {}
     with path.open("r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -152,6 +164,7 @@ def _atr(df: pd.DataFrame, n: int) -> pd.Series:
 def _state_machine(df: pd.DataFrame, rule: Callable[[int, float, dict], int]) -> np.ndarray:
     """Generic per-bar state machine. rule(i, close, ctx) -> new pos (<= current)."""
     close = df["close"].to_numpy()
+
     ctx: dict = {}
     pos = np.zeros(len(close), dtype=float)
     cur = 0.0
@@ -165,7 +178,7 @@ def pos_donchian(df: pd.DataFrame, n: int) -> np.ndarray:
     """Donchian breakout: enter on N-bar high/low breakout, hold until opposite."""
     hh = df["high"].rolling(n).max().shift(1).to_numpy()
     ll = df["low"].rolling(n).min().shift(1).to_numpy()
-    close = df["close"].to_numpy()
+
 
     def rule(i, c, ctx):
         pos = ctx["pos"]
@@ -187,7 +200,7 @@ def pos_bollinger_mr(df: pd.DataFrame, n: int, k: float) -> np.ndarray:
     up = (mid + k * sd).to_numpy()
     lo = (mid - k * sd).to_numpy()
     midv = mid.to_numpy()
-    close = df["close"].to_numpy()
+
 
     def rule(i, c, ctx):
         pos = ctx["pos"]
@@ -217,7 +230,7 @@ def pos_rsi2(df: pd.DataFrame, entry_lo: float = 10.0, entry_hi: float = 90.0) -
     avg_loss = loss.ewm(alpha=1.0 / 2, adjust=False).mean()
     rs = avg_gain / avg_loss.replace(0.0, np.nan)
     rsi = (100.0 - 100.0 / (1.0 + rs)).fillna(50.0).to_numpy()
-    close = df["close"].to_numpy()
+
 
     def rule(i, c, ctx):
         pos = ctx["pos"]
@@ -244,7 +257,7 @@ def pos_keltner_breakout(df: pd.DataFrame, n: int, k: float) -> np.ndarray:
     up = (ema + k * _atr(df, n)).to_numpy()
     lo = (ema - k * _atr(df, n)).to_numpy()
     emav = ema.to_numpy()
-    close = df["close"].to_numpy()
+
 
     def rule(i, c, ctx):
         pos = ctx["pos"]
@@ -271,7 +284,7 @@ def pos_vwap_reversion(df: pd.DataFrame, n: int = 288, z_entry: float = 2.0) -> 
     v = df["volume"].replace(0.0, np.nan)
     vwap = (tp * v).rolling(n).sum() / v.rolling(n).sum()
     z = ((df["close"] - vwap) / df["close"].rolling(n).std()).to_numpy()
-    close = df["close"].to_numpy()
+
 
     def rule(i, c, ctx):
         pos = ctx["pos"]
@@ -297,11 +310,12 @@ def pos_noise_band(df: pd.DataFrame, lookback: int, k: float, confirm_n: int,
                    max_hold: int = 48, sl_mult: float = 2.0, tp_mult: float = 4.0,
                    cooldown: int = 6) -> np.ndarray:
     """User's noise-band thesis, faithful to strategy_engine/noise_band.py:
-    band = k * rolling std of returns; enter after confirm_n consecutive
+
     returns beyond the band (same sign); exits: per-bar return falls back
     inside half a sigma (noise resumed), SL at sl_mult*band, TP at
     tp_mult*band, or the time stop; then a cooldown pause before re-entry."""
     close = df["close"].to_numpy()
+
     rets = np.zeros(len(close))
     rets[1:] = close[1:] / close[:-1] - 1.0
     sigma = pd.Series(rets).rolling(lookback).std().to_numpy()
@@ -353,8 +367,8 @@ def pos_noise_band(df: pd.DataFrame, lookback: int, k: float, confirm_n: int,
 # strategy registry (name -> list of (param_id, params))
 # --------------------------------------------------------------------------
 
-def strategy_grid() -> List[Tuple[str, str, Dict]]:
-    grid: List[Tuple[str, str, Dict]] = []
+def strategy_grid() -> list[tuple[str, str, dict]]:
+    grid: list[tuple[str, str, dict]] = []
     grid.append(("buy_hold", "long_only", dict(fn=sig_buy_hold)))
     for lb, vt in itertools.product([288, 1440], [0.25, 0.5]):
         grid.append(("tsmom_mop", f"lb{lb}_vt{vt}", dict(fn=sig_tsmom, lookback=lb, vol_target=vt)))
@@ -379,7 +393,7 @@ def strategy_grid() -> List[Tuple[str, str, Dict]]:
     return grid
 
 
-def build_position(name: str, params: Dict, df: pd.DataFrame) -> np.ndarray:
+def build_position(name: str, params: dict, df: pd.DataFrame) -> np.ndarray:
     return params["fn"](df, **{k: v for k, v in params.items() if k != "fn"})
 
 
@@ -387,9 +401,22 @@ def build_position(name: str, params: Dict, df: pd.DataFrame) -> np.ndarray:
 # simulation
 # --------------------------------------------------------------------------
 
-def simulate(close: np.ndarray, pos_target: np.ndarray, cost_bps: float
-             ) -> Tuple[np.ndarray, np.ndarray]:
-    """One-bar-lag execution. Returns (bar_returns, held_pos)."""
+def simulate(
+    close: np.ndarray,
+    pos_target: np.ndarray,
+    cost_bps: float,
+    *,
+    financing: np.ndarray | None = None,
+    index: pd.DatetimeIndex | None = None,
+    swap_schedule: SwapSchedule | None = None,
+    symbol: str | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """One-bar-lag execution. Returns (bar_returns, held_pos).
+
+    ``financing`` may be passed pre-computed (fraction of notional per bar,
+    positive = debit). Otherwise, if ``swap_schedule`` + ``index`` + ``symbol``
+    are supplied, the overnight swap drag is computed from the held position.
+    """
     n = len(close)
     pos = np.zeros(n)
     pos[1:] = np.clip(np.nan_to_num(pos_target[:-1], nan=0.0), -1.0, 1.0)
@@ -397,13 +424,23 @@ def simulate(close: np.ndarray, pos_target: np.ndarray, cost_bps: float
     px_ret[1:] = close[1:] / close[:-1] - 1.0
     chg = np.zeros(n)
     chg[1:] = np.diff(pos)
-    r = pos * px_ret - np.abs(chg) * (cost_bps / 1e4)
+
+    fin = np.zeros(n)
+    if financing is not None:
+        fin = np.asarray(financing, dtype=float)
+        if len(fin) != n:
+            raise ValueError(f"financing length {len(fin)} != {n}")
+    elif swap_schedule is not None and index is not None and symbol is not None:
+        fin = financing_series(index, pos, swap_schedule, symbol)
+
+    r = pos * px_ret - np.abs(chg) * (cost_bps / 1e4) - fin
     return r, pos
 
 
 def extract_trades(pos: np.ndarray, close: np.ndarray, index: pd.DatetimeIndex,
-                   cost_bps: float) -> List[dict]:
-    trades: List[dict] = []
+                   cost_bps: float, financing: np.ndarray | None = None) -> list[dict]:
+    trades: list[dict] = []
+    fin = np.asarray(financing, dtype=float) if financing is not None else None
     chg = np.diff(pos, prepend=0.0)
     n = len(close)
     open_i = None
@@ -413,12 +450,14 @@ def extract_trades(pos: np.ndarray, close: np.ndarray, index: pd.DatetimeIndex,
     def close_trade(exit_i: int) -> None:
         nonlocal open_i, open_px, open_dir
         gross = open_dir * (close[exit_i] - open_px) / open_px
-        net = gross - 2.0 * cost_bps / 1e4
+        swap = float(fin[open_i:exit_i + 1].sum()) if fin is not None else 0.0
+        net = gross - 2.0 * cost_bps / 1e4 - swap
         trades.append({
             "entry_ts": index[open_i], "exit_ts": index[exit_i],
             "side": "long" if open_dir > 0 else "short",
             "entry_px": open_px, "exit_px": close[exit_i],
             "bars": exit_i - open_i, "gross_pct": round(100 * gross, 6),
+            "financing_pct": round(100 * swap, 6),
             "net_pct_at_cost": round(100 * net, 6), "cost_bps_per_side": cost_bps,
         })
         open_i, open_px, open_dir = None, None, 0.0
@@ -442,7 +481,7 @@ def extract_trades(pos: np.ndarray, close: np.ndarray, index: pd.DatetimeIndex,
 
 
 def stats_from_returns(r: np.ndarray, index: pd.DatetimeIndex,
-                       bars_per_year: float = BARS_PER_YEAR) -> Dict[str, float]:
+                       bars_per_year: float = BARS_PER_YEAR) -> dict[str, float]:
     eq = np.cumprod(1.0 + r)
     peak = np.maximum.accumulate(eq)
     dd = eq / peak - 1.0
@@ -458,7 +497,7 @@ def stats_from_returns(r: np.ndarray, index: pd.DatetimeIndex,
     }
 
 
-def trade_stats(trades: List[dict]) -> Dict[str, float]:
+def trade_stats(trades: list[dict]) -> dict[str, float]:
     nets = [t["net_pct_at_cost"] for t in trades]
     if not nets:
         return {"trades": 0, "win_rate_pct": 0.0, "profit_factor": 0.0}
@@ -476,6 +515,22 @@ def trade_stats(trades: List[dict]) -> Dict[str, float]:
 # driver
 # --------------------------------------------------------------------------
 
+def resolve_swap_schedule(path: str | Path | None = None,
+                          enabled: bool = True) -> SwapSchedule | None:
+    """Resolve the financing schedule: explicit file > project default > built-in."""
+    if not enabled:
+        return None
+    if path:
+        return load_swap_schedule(path)
+    project_default = Path(__file__).resolve().parents[1] / "config" / "default.yaml"
+    if project_default.exists():
+        try:
+            return load_swap_schedule(project_default)
+        except Exception:  # noqa: BLE001 - fall back to the built-in schedule
+            pass
+    return default_schedule()
+
+
 def infer_bars_per_year(index: pd.DatetimeIndex) -> float:
     """Annualized bar count inferred from actual data coverage so the same lab
     works for 24/7 crypto AND session-based forex/commodities feeds."""
@@ -486,32 +541,50 @@ def infer_bars_per_year(index: pd.DatetimeIndex) -> float:
     return max(bars_per_day * 365.0, 1.0)
 
 
-def run_lab(history: Path, out_dir: Path, symbols: List[str] | None = None) -> None:
+def run_lab(history: Path, out_dir: Path, symbols: list[str] | None = None,
+            swap_schedule: SwapSchedule | None = None) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     candles = load_candles(history)
     if symbols:
         candles = {s: d for s, d in candles.items() if s in symbols}
-    rows: List[dict] = []
-    trades_by_strat_sym: Dict[Tuple[str, str], List[dict]] = {}
+    rows: list[dict] = []
+    trades_by_strat_sym: dict[tuple[str, str], list[dict]] = {}
 
     grid = strategy_grid()
-    print(f"Loaded {len(candles)} symbols from {history}. Running {len(grid)} strategy variants...")
+    swap_note = "on" if (swap_schedule is not None and swap_schedule.enabled) else "off"
+    print(f"Loaded {len(candles)} symbols from {history}. Running {len(grid)} strategy variants "
+          f"(swap financing {swap_note})...")
 
     for idx, (strat, pid, params) in enumerate(grid, 1):
         print(f"[{idx}/{len(grid)}] {strat} {pid}...")
         for sym, df in candles.items():
             pos_target = build_position(strat, params, df)
             bpy = infer_bars_per_year(df.index)
+
             key = (strat, sym)
+
+            # Positions do not depend on costs, so compute them once and reuse for
+            # gross P&L, financing and every cost level.
+            close = df["close"].to_numpy()
+            r_gross, held0 = simulate(close, pos_target, 0.0)
+            gross_pct = 100.0 * (float(np.prod(1.0 + r_gross)) - 1.0)
+            fin = (financing_series(df.index, held0, swap_schedule, sym)
+                   if swap_schedule is not None else np.zeros(len(df)))
+            fin_stats = summarize_financing(fin)
+
             for cost in COST_LEVELS:
-                r, held = simulate(df["close"].to_numpy(), pos_target, cost)
+                r, held = simulate(close, pos_target, cost, financing=fin)
                 st = stats_from_returns(r, df.index, bars_per_year=bpy)
                 row: dict = {
                     "strategy": strat, "params": pid, "symbol": sym,
-                    "cost_bps_per_side": cost, **st,
+                    "cost_bps_per_side": cost,
+                    "gross_return_pct": round(gross_pct, 3),
+                    "financing_pct": fin_stats["total_pct"],
+                    "financing_nights": fin_stats["nights_charged"],
+                    **st,
                 }
                 if cost == COST_LEVELS[2]:  # trade log at the realistic 5 bps level
-                    ts = extract_trades(held, df["close"].to_numpy(), df.index, cost)
+                    ts = extract_trades(held, close, df.index, cost, financing=fin)
                     for t in ts:
                         t["params"] = pid
                     trades_by_strat_sym.setdefault(key, []).extend(ts)
@@ -528,7 +601,7 @@ def run_lab(history: Path, out_dir: Path, symbols: List[str] | None = None) -> N
     print(f"strategy_lab: {len(rows)} result rows -> {out_dir}")
 
 
-def build_report(rows: List[dict], candles: Dict[str, pd.DataFrame]) -> str:
+def build_report(rows: list[dict], candles: dict[str, pd.DataFrame]) -> str:
     df = pd.DataFrame(rows)
     real = df[df["cost_bps_per_side"] == 5.0].copy()   # realistic retail costs
     stressed = df[df["cost_bps_per_side"] == 10.0].copy()
@@ -547,6 +620,7 @@ def build_report(rows: List[dict], candles: Dict[str, pd.DataFrame]) -> str:
             "symbols_positive": f"{n_pos}/{len(g)}",
             "worst_month_pct": round(worst_m, 2),
             "mean_maxdd_pct": round(g["max_drawdown_pct"].mean(), 2),
+            "mean_financing_pct": round(g["financing_pct"].mean(), 3),
             "score": round(score, 3),
         })
     rank = pd.DataFrame(variants).sort_values("score", ascending=False)
@@ -605,6 +679,10 @@ def build_report(rows: List[dict], candles: Dict[str, pd.DataFrame]) -> str:
         "transaction-cost literature, not a data artifact.",
         "* buy_hold over this window: BTC -6.6%, ETH -11.3%, XRP -25%, DOGE -38% "
         "(bear/range market) — context for why long-only baselines lose.",
+        "* Overnight swap/rollover financing is included: per-family bps per night "
+        "(config/default.yaml execution.swap), charged once per rollover on the held "
+        "position, triple on Wednesday. `financing_pct` is the total drag over the "
+        "sample; disable with --no-swap for a pure spread-only comparison.",
         "",
         "## Full metric table (5 bps)",
         "",
@@ -622,9 +700,14 @@ def main() -> int:
     ap.add_argument("--history", default="data/history/multi_m5.jsonl")
     ap.add_argument("--out", default="data/history/strategy_lab")
     ap.add_argument("--symbols", default="")
+    ap.add_argument("--swap-config", default=None,
+                    help="YAML/JSON swap schedule (default: config/default.yaml execution.swap)")
+    ap.add_argument("--no-swap", action="store_true",
+                    help="disable overnight swap/rollover financing")
     args = ap.parse_args()
     syms = [s for s in args.symbols.split(",") if s] or None
-    run_lab(Path(args.history), Path(args.out), syms)
+    schedule = resolve_swap_schedule(args.swap_config, enabled=not args.no_swap)
+    run_lab(Path(args.history), Path(args.out), syms, swap_schedule=schedule)
     return 0
 
 

@@ -14,17 +14,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import List, Tuple
 
-from core.bus import MessageBus
 from core.component import Component
-from core.config import Clock, Config
-from core.events import EventType, make_event, NormalizedEvent
-from core.metrics import Metrics
+from core.events import EventType, NormalizedEvent, make_event
 from core.keys import KeyManager, build_key_provider
-
-from .circuit_breaker import CircuitBreaker
-from .portfolio_optimizer import PortfolioOptimizer
 
 log = logging.getLogger("risk.veto")
 
@@ -42,12 +35,15 @@ class RiskVetoService(Component):
         self.var_conf = float(r.get("var_confidence", 0.95))
         self.enabled = bool(r.get("veto_service", {}).get("enabled", True))
 
-        # Phase 2: key manager -- no dev fallback
+        # Phase 2: key manager -- no dev fallback. Accept the legacy ``core.keys``
+        # nesting and the flat ``keys`` block used by config/default.yaml.
         if key_manager is not None:
             self.km = key_manager
         else:
+            keys_cfg = cfg.get_any("core.keys", "keys", default=None) \
+                if hasattr(cfg, "get_any") else cfg.get("core.keys", None)
             self.km = KeyManager(
-                build_key_provider(cfg.get("core.keys", None)),
+                build_key_provider(keys_cfg),
                 mode=cfg.get("mode", "paper"),
             )
 
@@ -112,9 +108,8 @@ class RiskVetoService(Component):
         return expected == sig
 
     # ---- evaluation ---------------------------------------------------
-    def _evaluate(self, proposal: dict) -> Tuple[str, List[str]]:
-        sym = proposal.get("symbol")
-        reasons: List[str] = []
+    def _evaluate(self, proposal: dict) -> tuple[str, list[str]]:
+        reasons: list[str] = []
         pos_pct = abs(proposal.get("position_pct", self.max_pos_pct))
         if pos_pct > self.hard_cap_pct:
             reasons.append(f"position {pos_pct:.2f}% exceeds HARD CAP {self.hard_cap_pct:.2f}%")

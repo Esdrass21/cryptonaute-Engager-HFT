@@ -9,9 +9,8 @@ an item (MT5 tick vs Binance tick, etc.).
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
 
-from core.events import EventType, NormalizedEvent, make_event
+from core.events import EventType, make_event
 
 log = logging.getLogger("data.normalizer")
 
