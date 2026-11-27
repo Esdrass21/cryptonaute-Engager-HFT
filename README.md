@@ -7,16 +7,17 @@ For quant researchers and solo traders who want to validate strategy logic in si
 Architecture reference: `architecture-hft-quant-platform-v3.md`.
 
 
-French Video Explainer 
+## Video explainers
 
-<video controls src="Cryptonaute_HFT.mp4" title="Title"></video>
+Les vidéos sont disponibles en téléchargement :
+- **Français** : [Cryptonaute_HFT.mp4](Cryptonaute_HFT.mp4) (~37 Mo)
+- **English** : [Cryptonaute_Pipeline.mp4](Cryptonaute_Pipeline.mp4) (~38 Mo)
 
-English video Explainer
-
-<video controls src="Cryptonaute_Pipeline.mp4" title=""></video>  
-
+> GitHub n'affiche pas les vidéos inline — cliquez sur les liens pour télécharger.
 
 ---
+
+## Module map
 
 ## Module map
 
